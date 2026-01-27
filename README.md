@@ -22,6 +22,11 @@ Auto-generate viral highlight clips from YouTube videos or manual uploads. Outpu
    - **Windows**: Download from https://ffmpeg.org/download.html and add to PATH
    - **macOS**: `brew install ffmpeg`
    - **Linux**: `sudo apt-get install ffmpeg` (Ubuntu/Debian) or `sudo yum install ffmpeg` (CentOS/RHEL)
+4. **JavaScript Runtime** (for YouTube downloads) - yt-dlp requires a JS runtime:
+   - **Option 1 - Deno (recommended)**:
+     - Windows: `irm https://deno.land/install.ps1 | iex`
+     - macOS/Linux: `curl -fsSL https://deno.land/install.sh | sh`
+   - **Option 2 - Node.js**: Download from https://nodejs.org/
 
 ### Backend Setup
 
@@ -155,6 +160,44 @@ Frontend will be available at http://localhost:3000
 - Face tracking is slower but provides better framing for podcasts
 - All data stored locally in `backend/data/`
 - No external services or API keys required
+
+## Troubleshooting
+
+### YouTube Download Error 403 Forbidden
+If you get HTTP 403 errors when downloading YouTube videos:
+
+1. **Update yt-dlp** (YouTube changes frequently):
+   ```bash
+   pip install --upgrade yt-dlp
+   ```
+
+2. **Install JavaScript runtime** (required for YouTube extraction):
+   ```bash
+   # Option 1: Deno (recommended)
+   # Windows PowerShell:
+   irm https://deno.land/install.ps1 | iex
+   # macOS/Linux:
+   curl -fsSL https://deno.land/install.sh | sh
+   
+   # Option 2: Install Node.js from https://nodejs.org/
+   ```
+
+3. **Verify ffmpeg is installed**:
+   ```bash
+   ffmpeg -version
+   ```
+
+4. **Restart the backend** after installing dependencies
+
+### Video Processing Errors
+- Ensure ffmpeg is properly installed and in PATH
+- Check that the video file is not corrupted
+- Try with a different video first
+
+### Whisper Model Download
+First run will download the Whisper model (~150MB). If it fails:
+- Check internet connection
+- Try running with `--reload` flag disabled
 
 ## License
 

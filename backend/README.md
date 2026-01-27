@@ -6,6 +6,9 @@ Backend API untuk Antariks Clipper menggunakan FastAPI.
 
 - Python 3.8+
 - FFmpeg (harus diinstall di sistem)
+- JavaScript Runtime untuk YouTube download (pilih salah satu):
+  - Deno (recommended): https://deno.land/
+  - Node.js: https://nodejs.org/
 
 ## Installation
 
