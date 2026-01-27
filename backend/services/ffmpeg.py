@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple
 import json
-import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +90,7 @@ def normalize_video(input_path: Path, output_path: Path) -> bool:
                 str(output_path)
             ]
         
-        logger.info(f"Normalize timeout: {timeout}s for {duration:.1f}s video")
+        logger.info(f"Normalize timeout: {timeout}s for {duration if duration else 'unknown'}s video")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         
         if result.returncode != 0:
@@ -105,6 +104,8 @@ def normalize_video(input_path: Path, output_path: Path) -> bool:
                 '-crf', '23',
                 '-c:a', 'aac',
                 '-b:a', '128k',
+                '-ar', '44100',
+                '-movflags', '+faststart',
                 '-y',
                 str(output_path)
             ]
