@@ -108,6 +108,29 @@ def iou(bbox1: List[int], bbox2: List[int]) -> float:
     
     return inter_area / union_area
 
+def detect_faces_sample(frame: np.ndarray) -> list:
+    """Quick face detection for a single frame"""
+    try:
+        mp_face = mp.solutions.face_detection
+        with mp_face.FaceDetection(min_detection_confidence=0.5) as detector:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = detector.process(rgb)
+            
+            faces = []
+            if results.detections:
+                h, w = frame.shape[:2]
+                for det in results.detections:
+                    bbox = det.location_data.relative_bounding_box
+                    faces.append({
+                        'x': int(bbox.xmin * w),
+                        'y': int(bbox.ymin * h),
+                        'width': int(bbox.width * w),
+                        'height': int(bbox.height * h)
+                    })
+            return faces
+    except Exception as e:
+        return []
+
 def match_tracks(prev_tracks: List[Dict], curr_faces: List[Dict], iou_threshold: float = 0.3) -> List[Dict]:
     """
     Match current faces with previous tracks using IOU

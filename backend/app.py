@@ -2,14 +2,16 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from typing import Optional, List
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import os
 import db
 from config import RAW_DIR
 from services.jobs import submit_job, submit_render
+from services.preview import generate_preview_stream, get_preview_frame
 
 # Setup logging
 logging.basicConfig(
@@ -314,6 +316,164 @@ def get_thumbnail(clip_id: str):
         raise
     except Exception as e:
         logger.error(f"Get thumbnail error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clips/{clip_id}/preview")
+async def get_clip_preview(clip_id: str, face_tracking: bool = True):
+    """
+    Stream preview of clip with 9:16 crop and optional face tracking.
+    Returns low-res preview video for fast playback.
+    """
+    preview_path = None
+    try:
+        clip = db.get_clip(clip_id)
+        if not clip:
+            raise HTTPException(status_code=404, detail="Clip not found")
+        
+        job = db.get_job(clip['job_id'])
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Use raw_path (not normalized)
+        video_path = Path(job['raw_path']) if job.get('raw_path') else None
+        if not video_path or not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video file not found")
+        
+        # Generate preview
+        preview_path = generate_preview_stream(
+            video_path,
+            clip['start_sec'],
+            clip['end_sec'],
+            face_tracking=face_tracking
+        )
+        
+        if not preview_path or not preview_path.exists():
+            raise HTTPException(status_code=500, detail="Preview generation failed")
+        
+        # Stream the file and cleanup after
+        def iterfile():
+            try:
+                with open(preview_path, 'rb') as f:
+                    yield from f
+            finally:
+                # Cleanup temp file even if streaming is interrupted
+                try:
+                    if preview_path and preview_path.exists():
+                        os.unlink(preview_path)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup preview file: {e}")
+        
+        return StreamingResponse(
+            iterfile(),
+            media_type="video/mp4",
+            headers={"Content-Disposition": f"inline; filename=preview_{clip_id}.mp4"}
+        )
+        
+    except HTTPException:
+        # Cleanup on error
+        if preview_path and preview_path.exists():
+            try:
+                os.unlink(preview_path)
+            except Exception:
+                pass
+        raise
+    except Exception as e:
+        # Cleanup on error
+        if preview_path and preview_path.exists():
+            try:
+                os.unlink(preview_path)
+            except Exception:
+                pass
+        logger.error(f"Preview error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/clips/{clip_id}/preview-frame")
+async def get_clip_preview_frame(clip_id: str, face_tracking: bool = True):
+    """
+    Get single preview frame (thumbnail) with 9:16 crop.
+    """
+    try:
+        clip = db.get_clip(clip_id)
+        if not clip:
+            raise HTTPException(status_code=404, detail="Clip not found")
+        
+        job = db.get_job(clip['job_id'])
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        video_path = Path(job['raw_path']) if job.get('raw_path') else None
+        if not video_path or not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video file not found")
+        
+        mid_time = (clip['start_sec'] + clip['end_sec']) / 2
+        duration = clip['end_sec'] - clip['start_sec']
+        
+        frame_bytes = get_preview_frame(
+            video_path,
+            mid_time,
+            face_tracking=face_tracking,
+            duration=duration
+        )
+        
+        if not frame_bytes:
+            raise HTTPException(status_code=500, detail="Frame extraction failed")
+        
+        return Response(
+            content=frame_bytes,
+            media_type="image/jpeg"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Preview frame error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/jobs/{job_id}/render-selected")
+async def render_selected_clips(
+    job_id: str, 
+    clip_ids: str,  # Comma-separated clip IDs from query params
+    options: RenderCreate
+):
+    """
+    Render only selected clips (batch render).
+    """
+    try:
+        job = db.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Parse comma-separated clip IDs
+        clip_id_list = [cid.strip() for cid in clip_ids.split(',') if cid.strip()]
+        
+        render_ids = []
+        for clip_id in clip_id_list:
+            clip = db.get_clip(clip_id)
+            if not clip or clip['job_id'] != job_id:
+                continue
+            
+            render_id = str(uuid.uuid4())
+            db.create_render(
+                render_id=render_id,
+                clip_id=clip_id,
+                options=options.dict()
+            )
+            submit_render(render_id)
+            render_ids.append(render_id)
+        
+        return {
+            "job_id": job_id,
+            "render_ids": render_ids,
+            "count": len(render_ids),
+            "status": "queued"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch render error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

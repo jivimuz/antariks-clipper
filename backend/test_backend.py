@@ -21,6 +21,7 @@ def test_syntax():
         'highlight',
         'thumbnails',
         'jobs',
+        'preview',
     ]
     
     # Test core modules that don't require heavy dependencies
