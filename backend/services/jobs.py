@@ -29,6 +29,21 @@ def submit_render(render_id: str):
     """Submit render to background processing"""
     executor.submit(process_render, render_id)
 
+def cleanup_raw_file(raw_path: str) -> bool:
+    """
+    Delete raw file after processing completes to save disk space.
+    Normalized files are kept for rendering clips.
+    """
+    try:
+        if raw_path and Path(raw_path).exists():
+            Path(raw_path).unlink()
+            logger.info(f"Cleaned up raw file: {raw_path}")
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to cleanup raw file {raw_path}: {e}")
+        return False
+
 def process_job(job_id: str):
     """
     Main job processing pipeline
@@ -37,7 +52,10 @@ def process_job(job_id: str):
     3. Transcribe
     4. Generate highlights
     5. Create thumbnails
+    6. Cleanup raw files
     """
+    raw_path = None
+    
     try:
         logger.info(f"Processing job: {job_id}")
         job = db.get_job(job_id)
@@ -49,7 +67,6 @@ def process_job(job_id: str):
         # Step 1: Acquire
         db.update_job(job_id, status='processing', step='acquire', progress=10)
         
-        raw_path = None
         if job['source_type'] == 'youtube':
             raw_path = RAW_DIR / f"{job_id}.mp4"
             if not download_youtube(job['source_url'], raw_path):
@@ -117,6 +134,13 @@ def process_job(job_id: str):
                 thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else ""
             )
         
+        # Step 6: Cleanup raw file to save disk space
+        db.update_job(job_id, step='cleanup', progress=95)
+        if raw_path:
+            if cleanup_raw_file(str(raw_path)):
+                # Clear raw_path in database only if cleanup succeeded
+                db.update_job(job_id, raw_path="")
+        
         # Done
         db.update_job(job_id, status='ready', step='complete', progress=100)
         logger.info(f"Job complete: {job_id}")
@@ -124,6 +148,7 @@ def process_job(job_id: str):
     except Exception as e:
         logger.error(f"Job processing error: {e}", exc_info=True)
         db.update_job(job_id, status='failed', error=str(e))
+        # Don't cleanup on failure - might need raw file for debugging
 
 def process_render(render_id: str):
     """
