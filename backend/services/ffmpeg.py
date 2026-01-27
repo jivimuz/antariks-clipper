@@ -7,33 +7,118 @@ import json
 
 logger = logging.getLogger(__name__)
 
-def normalize_video(input_path: Path, output_path: Path) -> bool:
-    """Normalize video to standard format"""
+def get_video_info(video_path: Path) -> Optional[dict]:
+    """Get video codec and format info"""
     try:
         cmd = [
-            'ffmpeg', '-i', str(input_path),
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-ar', '44100',
-            '-y',
-            str(output_path)
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name,width,height',
+            '-of', 'json',
+            str(video_path)
         ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            if data.get('streams'):
+                return data['streams'][0]
+        return None
+    except Exception as e:
+        logger.error(f"Get video info error: {e}")
+        return None
+
+def get_audio_info(video_path: Path) -> Optional[dict]:
+    """Get audio codec info"""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'a:0',
+            '-show_entries', 'stream=codec_name,sample_rate',
+            '-of', 'json',
+            str(video_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            if data.get('streams'):
+                return data['streams'][0]
+        return None
+    except Exception as e:
+        logger.error(f"Get audio info error: {e}")
+        return None
+
+def normalize_video(input_path: Path, output_path: Path) -> bool:
+    """Normalize video to standard format with smart detection"""
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Normalizing video: {input_path}")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        # Get video duration for dynamic timeout
+        duration = get_video_duration(input_path)
+        # Timeout = 3x duration minimum 300s, max 7200s (2 hours)
+        timeout = min(max(int((duration or 600) * 3), 300), 7200)
+        
+        # Check if video is already H264
+        video_info = get_video_info(input_path)
+        audio_info = get_audio_info(input_path)
+        
+        video_codec = video_info.get('codec_name', '') if video_info else ''
+        audio_codec = audio_info.get('codec_name', '') if audio_info else ''
+        
+        # If already H264 + AAC, just copy (much faster)
+        if video_codec == 'h264' and audio_codec == 'aac':
+            logger.info(f"Video already H264/AAC, copying streams: {input_path}")
+            cmd = [
+                'ffmpeg', '-i', str(input_path),
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                '-y',
+                str(output_path)
+            ]
+        else:
+            # Need to re-encode
+            logger.info(f"Normalizing video (re-encode): {input_path}")
+            cmd = [
+                'ffmpeg', '-i', str(input_path),
+                '-c:v', 'libx264',
+                '-preset', 'fast',  # Changed from 'medium' to 'fast'
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-movflags', '+faststart',
+                '-y',
+                str(output_path)
+            ]
+        
+        logger.info(f"Normalize timeout: {timeout}s for {duration if duration else 'unknown'}s video")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         
         if result.returncode != 0:
             logger.error(f"FFmpeg normalize error: {result.stderr}")
-            return False
+            # Fallback: try with ultrafast preset
+            logger.info("Retrying with ultrafast preset...")
+            cmd_fallback = [
+                'ffmpeg', '-i', str(input_path),
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-movflags', '+faststart',
+                '-y',
+                str(output_path)
+            ]
+            result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=timeout)
+            if result.returncode != 0:
+                logger.error(f"FFmpeg fallback error: {result.stderr}")
+                return False
             
         logger.info(f"Normalized: {output_path}")
         return output_path.exists()
         
     except subprocess.TimeoutExpired:
-        logger.error("Normalize timeout")
+        logger.error(f"Normalize timeout after {timeout}s")
         return False
     except Exception as e:
         logger.error(f"Normalize error: {e}")
@@ -49,7 +134,7 @@ def get_video_duration(video_path: Path) -> Optional[float]:
             str(video_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
             data = json.loads(result.stdout)
             return float(data['format']['duration'])
@@ -61,6 +146,7 @@ def get_video_duration(video_path: Path) -> Optional[float]:
 def extract_thumbnail(video_path: Path, timestamp: float, output_path: Path) -> bool:
     """Extract thumbnail at timestamp"""
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
             'ffmpeg', '-ss', str(timestamp),
             '-i', str(video_path),
@@ -80,16 +166,21 @@ def extract_thumbnail(video_path: Path, timestamp: float, output_path: Path) -> 
 def extract_segment(input_path: Path, output_path: Path, start: float, duration: float) -> bool:
     """Extract video segment"""
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Use -ss before -i for faster seeking
         cmd = [
-            'ffmpeg', '-ss', str(start),
+            'ffmpeg', 
+            '-ss', str(start),
             '-i', str(input_path),
             '-t', str(duration),
             '-c', 'copy',
+            '-avoid_negative_ts', 'make_zero',
             '-y',
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        timeout = max(int(duration * 2), 60)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -99,8 +190,10 @@ def extract_segment(input_path: Path, output_path: Path, start: float, duration:
 def extract_audio(video_path: Path, output_path: Path, start: float, duration: float) -> bool:
     """Extract audio segment"""
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
-            'ffmpeg', '-ss', str(start),
+            'ffmpeg', 
+            '-ss', str(start),
             '-i', str(video_path),
             '-t', str(duration),
             '-vn', '-acodec', 'aac',
@@ -108,7 +201,8 @@ def extract_audio(video_path: Path, output_path: Path, start: float, duration: f
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        timeout = max(int(duration * 2), 60)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -118,18 +212,26 @@ def extract_audio(video_path: Path, output_path: Path, start: float, duration: f
 def crop_and_scale_center(input_path: Path, output_path: Path, width: int, height: int) -> bool:
     """Crop center and scale to target resolution"""
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         # Calculate crop for 9:16 aspect ratio
         target_aspect = width / height
+        
+        # Get duration for timeout
+        duration = get_video_duration(input_path) or 60
+        timeout = max(int(duration * 3), 120)
         
         cmd = [
             'ffmpeg', '-i', str(input_path),
             '-vf', f'crop=ih*{target_aspect}:ih,scale={width}:{height}',
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
             '-c:a', 'copy',
             '-y',
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -139,6 +241,7 @@ def crop_and_scale_center(input_path: Path, output_path: Path, width: int, heigh
 def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bool:
     """Mux video and audio"""
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
             'ffmpeg',
             '-i', str(video_path),
@@ -150,7 +253,9 @@ def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bo
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        duration = get_video_duration(video_path) or 60
+        timeout = max(int(duration * 2), 120)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -160,18 +265,25 @@ def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bo
 def burn_subtitles(video_path: Path, srt_path: Path, output_path: Path) -> bool:
     """Burn subtitles into video"""
     try:
-        # Escape path for subtitles filter
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Escape path for subtitles filter (Windows compatibility)
         srt_escaped = str(srt_path).replace('\\', '/').replace(':', '\\:')
+        
+        duration = get_video_duration(video_path) or 60
+        timeout = max(int(duration * 3), 120)
         
         cmd = [
             'ffmpeg', '-i', str(video_path),
             '-vf', f"subtitles='{srt_escaped}':force_style='FontSize=24,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Alignment=2'",
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
             '-c:a', 'copy',
             '-y',
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
