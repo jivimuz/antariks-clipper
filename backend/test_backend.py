@@ -103,7 +103,7 @@ def test_database():
         return False
 
 def test_cleanup_raw_file():
-    """Test cleanup_raw_file function"""
+    """Test cleanup_raw_file function logic"""
     print("\nTesting cleanup_raw_file...")
     
     try:
@@ -112,10 +112,11 @@ def test_cleanup_raw_file():
         import logging
         
         # Define the cleanup function inline to test it independently
+        # This tests the logic without requiring heavy dependencies
         def cleanup_raw_file(raw_path: str) -> bool:
             """
-            Hapus file raw setelah proses selesai untuk menghemat disk space.
-            File normalized tetap disimpan untuk keperluan render.
+            Delete raw file after processing completes to save disk space.
+            Normalized files are kept for rendering clips.
             """
             try:
                 if raw_path and Path(raw_path).exists():
