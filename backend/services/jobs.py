@@ -162,8 +162,9 @@ def process_job(job_id: str):
         # ===== Step 6: Cleanup raw file =====
         db.update_job(job_id, step='cleanup', progress=95)
         if raw_path and raw_path.exists():
-            cleanup_raw_file(str(raw_path))
-            db.update_job(job_id, raw_path="")
+            if cleanup_raw_file(str(raw_path)):
+                # Clear raw_path in database only if cleanup succeeded
+                db.update_job(job_id, raw_path="")
         
         # ===== Done =====
         db.update_job(job_id, status='ready', step='complete', progress=100)

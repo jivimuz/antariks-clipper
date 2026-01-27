@@ -67,9 +67,12 @@ export default function JobDetailPage() {
 
   const handleRetryJob = async () => {
     try {
-      await fetch(`http://localhost:8000/api/jobs/${jobId}/retry`, {
+      const response = await fetch(`http://localhost:8000/api/jobs/${jobId}/retry`, {
         method: 'POST'
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       // Refresh job data
       fetchJob();
     } catch (error) {
@@ -105,9 +108,12 @@ export default function JobDetailPage() {
 
   const handleRetryRender = async (renderId: string) => {
     try {
-      await fetch(`http://localhost:8000/api/renders/${renderId}/retry`, {
+      const response = await fetch(`http://localhost:8000/api/renders/${renderId}/retry`, {
         method: 'POST'
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       // Start polling for render status
       pollRenderStatus(renderId);
     } catch (error) {
