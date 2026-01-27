@@ -32,6 +32,11 @@ OUTPUT_HEIGHT = 1920
 FACE_DETECTION_INTERVAL = 2  # Process every N frames
 EMA_ALPHA = 0.2  # Smoothing for center tracking
 
+# Preview settings
+PREVIEW_WIDTH = 360  # Low res untuk preview cepat
+PREVIEW_HEIGHT = 640  # 9:16 ratio
+PREVIEW_SAMPLE_FRAMES = 10  # Sample frames untuk face detection
+
 # Ensure directories exist
 for directory in [DATA_DIR, RAW_DIR, NORMALIZED_DIR, TRANSCRIPTS_DIR, THUMBNAILS_DIR, RENDERS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)

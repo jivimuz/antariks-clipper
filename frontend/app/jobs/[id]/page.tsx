@@ -1,17 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface Job {
   id: string;
-  source_type: string;
-  source_url?: string;
   status: string;
   step: string;
   progress: number;
   error?: string;
+  source_type: string;
+  source_url?: string;
 }
 
 interface Clip {
@@ -21,7 +21,6 @@ interface Clip {
   score: number;
   title: string;
   transcript_snippet: string;
-  thumbnail_path: string;
 }
 
 interface Render {
@@ -29,114 +28,103 @@ interface Render {
   status: string;
   progress: number;
   output_path?: string;
-  error?: string;
 }
 
 export default function JobDetailPage() {
   const params = useParams();
   const jobId = params.id as string;
-
+  
   const [job, setJob] = useState<Job | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
+  const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
+  const [previewClipId, setPreviewClipId] = useState<string | null>(null);
+  const [faceTracking, setFaceTracking] = useState(true);
+  const [captions, setCaptions] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [renders, setRenders] = useState<Record<string, Render>>({});
-  const [loading, setLoading] = useState(true);
 
+  const API_URL = 'http://localhost:8000';
+
+  // Fetch job
   useEffect(() => {
-    if (jobId) {
-      fetchJob();
-      const interval = setInterval(fetchJob, 2000); // Poll every 2 seconds
-      return () => clearInterval(interval);
-    }
+    const fetchJob = async () => {
+      const res = await fetch(`${API_URL}/api/jobs/${jobId}`);
+      const data = await res.json();
+      setJob(data);
+    };
+    
+    fetchJob();
+    const interval = setInterval(fetchJob, 2000);
+    return () => clearInterval(interval);
   }, [jobId]);
 
-  const fetchJob = async () => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/jobs/${jobId}`);
-      const data = await response.json();
-      setJob(data);
+  // Fetch clips when job is ready
+  useEffect(() => {
+    if (job?.status === 'ready') {
+      fetch(`${API_URL}/api/jobs/${jobId}/clips`)
+        .then(res => res.json())
+        .then(data => setClips(data.clips || []));
+    }
+  }, [job?.status, jobId]);
 
-      if (data.status === 'ready') {
-        fetchClips();
+  const toggleClipSelection = (clipId: string) => {
+    setSelectedClips(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clipId)) {
+        newSet.delete(clipId);
+      } else {
+        newSet.add(clipId);
       }
-    } catch (error) {
-      console.error('Failed to fetch job:', error);
-    } finally {
-      setLoading(false);
-    }
+      return newSet;
+    });
   };
 
-  const handleRetryJob = async () => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/jobs/${jobId}/retry`, {
-        method: 'POST'
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      // Refresh job data
-      fetchJob();
-    } catch (error) {
-      console.error('Failed to retry job:', error);
-    }
+  const selectAllClips = () => {
+    setSelectedClips(new Set(clips.map(c => c.id)));
   };
 
-  const fetchClips = async () => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/jobs/${jobId}/clips`);
-      const data = await response.json();
-      setClips(data.clips);
-    } catch (error) {
-      console.error('Failed to fetch clips:', error);
-    }
+  const deselectAllClips = () => {
+    setSelectedClips(new Set());
   };
 
-  const handleRender = async (clipId: string, faceTracking: boolean, captions: boolean) => {
+  const renderSelectedClips = async () => {
+    if (selectedClips.size === 0) return;
+    
+    setRendering(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/clips/${clipId}/render`, {
+      const res = await fetch(`${API_URL}/api/jobs/${jobId}/render-selected?${new URLSearchParams({
+        clip_ids: Array.from(selectedClips).join(',')
+      })}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ face_tracking: faceTracking, captions }),
+        body: JSON.stringify({
+          face_tracking: faceTracking,
+          captions: captions
+        })
       });
-      const data = await response.json();
-
-      // Start polling for render status
-      pollRenderStatus(data.render_id);
-    } catch (error) {
-      console.error('Failed to create render:', error);
-    }
-  };
-
-  const handleRetryRender = async (renderId: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/renders/${renderId}/retry`, {
-        method: 'POST'
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await res.json();
+      
+      // Poll render status
+      for (const renderId of data.render_ids) {
+        pollRenderStatus(renderId);
       }
-      // Start polling for render status
-      pollRenderStatus(renderId);
     } catch (error) {
-      console.error('Failed to retry render:', error);
+      console.error('Render error:', error);
     }
+    setRendering(false);
   };
 
   const pollRenderStatus = async (renderId: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`http://localhost:8000/api/renders/${renderId}`);
-        const data = await response.json();
-
-        setRenders((prev) => ({ ...prev, [renderId]: data }));
-
-        if (data.status === 'ready' || data.status === 'failed') {
-          clearInterval(interval);
-        }
-      } catch (error) {
-        console.error('Failed to fetch render:', error);
-        clearInterval(interval);
+    const poll = async () => {
+      const res = await fetch(`${API_URL}/api/renders/${renderId}`);
+      const render = await res.json();
+      setRenders(prev => ({ ...prev, [renderId]: render }));
+      
+      if (render.status !== 'ready' && render.status !== 'failed') {
+        setTimeout(poll, 2000);
       }
-    }, 2000);
+    };
+    poll();
   };
 
   const formatTime = (seconds: number) => {
@@ -145,214 +133,182 @@ export default function JobDetailPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading job...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!job) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 dark:text-gray-400">Job not found</p>
-        </div>
-      </div>
-    );
-  }
+  if (!job) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto px-4 py-16">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8">
-            <Link
-              href="/jobs"
-              className="text-purple-600 hover:text-purple-700 dark:text-purple-400 font-medium"
-            >
-              ← Back to Jobs
-            </Link>
+    <div className="min-h-screen bg-gray-900 text-white p-8">
+      <Link href="/jobs" className="text-blue-400 hover:underline mb-4 block">
+        ← Back to Jobs
+      </Link>
+
+      {/* Job Status */}
+      <div className="bg-gray-800 rounded-lg p-6 mb-6">
+        <h1 className="text-2xl font-bold mb-4">Job: {job.id.slice(0, 8)}...</h1>
+        
+        <div className="flex items-center gap-4 mb-4">
+          <span className={`px-3 py-1 rounded text-sm ${
+            job.status === 'ready' ? 'bg-green-600' :
+            job.status === 'failed' ? 'bg-red-600' :
+            job.status === 'processing' ? 'bg-yellow-600' :
+            'bg-gray-600'
+          }`}>
+            {job.status}
+          </span>
+          {job.step && <span className="text-gray-400">Step: {job.step}</span>}
+        </div>
+
+        {job.status === 'processing' && (
+          <div className="w-full bg-gray-700 rounded h-4 mb-2">
+            <div 
+              className="bg-blue-500 h-4 rounded transition-all"
+              style={{ width: `${job.progress}%` }}
+            />
           </div>
+        )}
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-              Job Details
-            </h1>
+        {job.error && (
+          <div className="bg-red-900/50 text-red-300 p-3 rounded mt-4">
+            Error: {job.error}
+          </div>
+        )}
+      </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Status</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white capitalize">
-                  {job.status}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Progress</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {job.progress}%
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Source Type</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white capitalize">
-                  {job.source_type}
-                </p>
-              </div>
-              {job.step && (
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Current Step</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {job.step}
-                  </p>
-                </div>
-              )}
+      {/* Preview Mode */}
+      {job.status === 'ready' && clips.length > 0 && (
+        <>
+          {/* Controls */}
+          <div className="bg-gray-800 rounded-lg p-4 mb-6 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="faceTracking"
+                checked={faceTracking}
+                onChange={(e) => setFaceTracking(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="faceTracking">Face Tracking</label>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="captions"
+                checked={captions}
+                onChange={(e) => setCaptions(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="captions">Captions</label>
             </div>
 
-            {job.source_url && (
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Source URL</p>
-                <p className="text-gray-900 dark:text-white break-all">{job.source_url}</p>
-              </div>
-            )}
+            <div className="flex-1" />
 
-            {job.status === 'processing' && (
-              <div className="mb-6">
-                <div className="w-full h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500"
-                    style={{ width: `${job.progress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            {job.error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
-                Error: {job.error}
-              </div>
-            )}
-
-            {job.status === 'failed' && (
-              <button
-                onClick={handleRetryJob}
-                className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 font-medium"
-              >
-                🔄 Retry Job
-              </button>
-            )}
+            <button
+              onClick={selectAllClips}
+              className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600"
+            >
+              Select All
+            </button>
+            <button
+              onClick={deselectAllClips}
+              className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600"
+            >
+              Deselect All
+            </button>
+            
+            <button
+              onClick={renderSelectedClips}
+              disabled={selectedClips.size === 0 || rendering}
+              className={`px-4 py-2 rounded font-bold ${
+                selectedClips.size === 0 || rendering
+                  ? 'bg-gray-600 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-500'
+              }`}
+            >
+              {rendering ? 'Rendering...' : `Render ${selectedClips.size} Clips`}
+            </button>
           </div>
 
-          {job.status === 'ready' && clips.length > 0 && (
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-                Highlight Clips ({clips.length})
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {clips.map((clip) => (
-                  <div
-                    key={clip.id}
-                    className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden"
-                  >
-                    {clip.thumbnail_path && (
-                      <img
-                        src={`http://localhost:8000/api/thumbnails/${clip.id}`}
-                        alt={clip.title}
-                        className="w-full h-48 object-cover"
-                      />
-                    )}
-                    <div className="p-4">
-                      <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">
-                        {clip.title}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        <span>
-                          {formatTime(clip.start_sec)} - {formatTime(clip.end_sec)}
-                        </span>
-                        <span>•</span>
-                        <span>{(clip.end_sec - clip.start_sec).toFixed(0)}s</span>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                        {clip.transcript_snippet}
-                      </p>
-
-                      <div className="space-y-2">
-                        <button
-                          onClick={() => handleRender(clip.id, false, false)}
-                          className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-sm font-medium"
-                        >
-                          Render (Simple)
-                        </button>
-                        <button
-                          onClick={() => handleRender(clip.id, true, false)}
-                          className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium"
-                        >
-                          Render (Face Tracking)
-                        </button>
-                        <button
-                          onClick={() => handleRender(clip.id, false, true)}
-                          className="w-full py-2 px-4 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium"
-                        >
-                          Render (Captions)
-                        </button>
-                      </div>
-
-                      {/* Show render status */}
-                      {Object.entries(renders).map(
-                        ([renderId, render]) =>
-                          render && (
-                            <div key={renderId} className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                              {render.status === 'processing' && (
-                                <div>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    Rendering... {render.progress}%
-                                  </p>
-                                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-full mt-2">
-                                    <div
-                                      className="h-full bg-blue-500 rounded-full transition-all"
-                                      style={{ width: `${render.progress}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
-                              )}
-                              {render.status === 'ready' && (
-                                <a
-                                  href={`http://localhost:8000/api/renders/${renderId}/download`}
-                                  download
-                                  className="block w-full py-2 px-4 bg-green-500 text-white text-center rounded-lg hover:bg-green-600 text-sm font-medium"
-                                >
-                                  Download
-                                </a>
-                              )}
-                              {render.status === 'failed' && (
-                                <div>
-                                  <p className="text-sm text-red-600 dark:text-red-400 mb-2">
-                                    Render failed: {render.error}
-                                  </p>
-                                  <button
-                                    onClick={() => handleRetryRender(renderId)}
-                                    className="w-full py-2 px-4 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm font-medium"
-                                  >
-                                    🔄 Retry Render
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )
-                      )}
-                    </div>
-                  </div>
-                ))}
+          {/* Preview Player */}
+          {previewClipId && (
+            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Preview</h2>
+                <button
+                  onClick={() => setPreviewClipId(null)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ✕ Close
+                </button>
+              </div>
+              <div className="flex justify-center">
+                <video
+                  key={previewClipId + faceTracking}
+                  controls
+                  autoPlay
+                  className="max-h-[600px] rounded"
+                  style={{ aspectRatio: '9/16' }}
+                >
+                  <source
+                    src={`${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
+                    type="video/mp4"
+                  />
+                </video>
               </div>
             </div>
           )}
-        </div>
-      </div>
+
+          {/* Clips Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {clips.map((clip) => (
+              <div
+                key={clip.id}
+                className={`bg-gray-800 rounded-lg overflow-hidden cursor-pointer transition-all ${
+                  selectedClips.has(clip.id) ? 'ring-2 ring-green-500' : ''
+                }`}
+              >
+                {/* Thumbnail with 9:16 aspect */}
+                <div 
+                  className="relative bg-gray-700"
+                  style={{ aspectRatio: '9/16' }}
+                  onClick={() => setPreviewClipId(clip.id)}
+                >
+                  <img
+                    src={`${API_URL}/api/clips/${clip.id}/preview-frame?face_tracking=${faceTracking}`}
+                    alt={clip.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-2 right-2 bg-black/70 px-2 py-1 rounded text-xs">
+                    {formatTime(clip.end_sec - clip.start_sec)}
+                  </div>
+                  <div className="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded text-xs">
+                    Score: {clip.score.toFixed(1)}
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/50 transition-opacity">
+                    <span className="text-4xl">▶</span>
+                  </div>
+                </div>
+                
+                {/* Info */}
+                <div className="p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedClips.has(clip.id)}
+                      onChange={() => toggleClipSelection(clip.id)}
+                      className="w-4 h-4"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-sm font-medium truncate">{clip.title}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 line-clamp-2">
+                    {clip.transcript_snippet}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
