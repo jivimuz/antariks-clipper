@@ -28,6 +28,7 @@ interface Render {
   status: string;
   progress: number;
   output_path?: string;
+  error?: string;
 }
 
 export default function JobDetailPage() {
@@ -245,6 +246,7 @@ export default function JobDetailPage() {
                   key={previewClipId + faceTracking}
                   controls
                   autoPlay
+                  muted
                   className="max-h-[600px] rounded"
                   style={{ aspectRatio: '9/16' }}
                 >

@@ -3,7 +3,7 @@ import logging
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, Generator
+from typing import Optional, Tuple
 import tempfile
 import subprocess
 from services.face_track import detect_faces_sample

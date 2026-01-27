@@ -31,7 +31,7 @@ def submit_render(render_id: str):
 def cleanup_raw_file(raw_path: str) -> bool:
     """
     Delete raw file after processing completes to save disk space.
-    Normalized files are kept for rendering clips.
+    Raw files are kept during processing for preview and rendering.
     """
     try:
         if raw_path and Path(raw_path).exists():

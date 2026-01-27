@@ -324,6 +324,7 @@ async def get_clip_preview(clip_id: str, face_tracking: bool = True):
     Stream preview of clip with 9:16 crop and optional face tracking.
     Returns low-res preview video for fast playback.
     """
+    preview_path = None
     try:
         clip = db.get_clip(clip_id)
         if not clip:
@@ -351,10 +352,16 @@ async def get_clip_preview(clip_id: str, face_tracking: bool = True):
         
         # Stream the file and cleanup after
         def iterfile():
-            with open(preview_path, 'rb') as f:
-                yield from f
-            # Cleanup temp file
-            os.unlink(preview_path)
+            try:
+                with open(preview_path, 'rb') as f:
+                    yield from f
+            finally:
+                # Cleanup temp file even if streaming is interrupted
+                try:
+                    if preview_path and preview_path.exists():
+                        os.unlink(preview_path)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup preview file: {e}")
         
         return StreamingResponse(
             iterfile(),
@@ -363,8 +370,20 @@ async def get_clip_preview(clip_id: str, face_tracking: bool = True):
         )
         
     except HTTPException:
+        # Cleanup on error
+        if preview_path and preview_path.exists():
+            try:
+                os.unlink(preview_path)
+            except Exception:
+                pass
         raise
     except Exception as e:
+        # Cleanup on error
+        if preview_path and preview_path.exists():
+            try:
+                os.unlink(preview_path)
+            except Exception:
+                pass
         logger.error(f"Preview error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
