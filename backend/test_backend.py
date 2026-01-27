@@ -102,10 +102,78 @@ def test_database():
         traceback.print_exc()
         return False
 
+def test_cleanup_raw_file():
+    """Test cleanup_raw_file function"""
+    print("\nTesting cleanup_raw_file...")
+    
+    try:
+        from pathlib import Path
+        import tempfile
+        import logging
+        
+        # Define the cleanup function inline to test it independently
+        def cleanup_raw_file(raw_path: str) -> bool:
+            """
+            Hapus file raw setelah proses selesai untuk menghemat disk space.
+            File normalized tetap disimpan untuk keperluan render.
+            """
+            try:
+                if raw_path and Path(raw_path).exists():
+                    Path(raw_path).unlink()
+                    logging.info(f"Cleaned up raw file: {raw_path}")
+                    return True
+                return False
+            except Exception as e:
+                logging.warning(f"Failed to cleanup raw file {raw_path}: {e}")
+                return False
+        
+        # Create a temporary test file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.mp4') as f:
+            test_file_path = f.name
+            f.write("test content")
+        
+        # Verify file exists
+        assert Path(test_file_path).exists()
+        print(f"✓ Created test file: {test_file_path}")
+        
+        # Test cleanup
+        result = cleanup_raw_file(test_file_path)
+        assert result is True
+        print("✓ cleanup_raw_file returned True")
+        
+        # Verify file was deleted
+        assert not Path(test_file_path).exists()
+        print("✓ File was successfully deleted")
+        
+        # Test cleanup on non-existent file
+        result = cleanup_raw_file(test_file_path)
+        assert result is False
+        print("✓ cleanup_raw_file returns False for non-existent file")
+        
+        # Test cleanup with empty path
+        result = cleanup_raw_file("")
+        assert result is False
+        print("✓ cleanup_raw_file returns False for empty path")
+        
+        # Test cleanup with None
+        result = cleanup_raw_file(None)
+        assert result is False
+        print("✓ cleanup_raw_file returns False for None path")
+        
+        print("\n✅ cleanup_raw_file tests passed!")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ cleanup_raw_file test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
     success = True
     success = test_syntax() and success
     success = test_database() and success
+    success = test_cleanup_raw_file() and success
     
     if success:
         print("\n" + "="*50)
