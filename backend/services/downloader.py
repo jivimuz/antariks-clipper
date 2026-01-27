@@ -104,15 +104,17 @@ def download_youtube(url: str, output_path: Path) -> bool:
             return True
         
         # Check for any video file with the base name
-        base_name = output_path.stem
         for ext in ['.mp4', '.mkv', '.webm']:
             check_path = output_path.with_suffix(ext)
             if check_path.exists():
                 if check_path != output_path:
                     # Convert to mp4 if needed
                     if ext != '.mp4':
-                        convert_to_mp4(check_path, output_path)
-                        check_path.unlink()
+                        if convert_to_mp4(check_path, output_path):
+                            check_path.unlink()
+                        else:
+                            logger.error(f"Failed to convert {check_path} to mp4")
+                            return False
                     else:
                         check_path.rename(output_path)
                 logger.info(f"Downloaded: {output_path}")
@@ -131,6 +133,7 @@ def download_youtube(url: str, output_path: Path) -> bool:
 def convert_to_mp4(input_path: Path, output_path: Path) -> bool:
     """Convert video to mp4 using ffmpeg"""
     try:
+        logger.info(f"Converting {input_path} to mp4...")
         cmd = [
             'ffmpeg',
             '-i', str(input_path),
@@ -140,7 +143,12 @@ def convert_to_mp4(input_path: Path, output_path: Path) -> bool:
             str(output_path)
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        return result.returncode == 0
+        if result.returncode == 0:
+            logger.info(f"Successfully converted to {output_path}")
+            return True
+        else:
+            logger.error(f"Conversion failed: {result.stderr}")
+            return False
     except Exception as e:
         logger.error(f"Convert error: {e}")
         return False
