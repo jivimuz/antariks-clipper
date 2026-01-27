@@ -265,6 +265,8 @@ export default function JobDetailPage() {
                   const clip = clips.find(c => c.id === previewClipId);
                   if (!clip) return null;
                   
+                  const currentIndex = clips.findIndex(c => c.id === previewClipId);
+                  
                   return (
                     <div className="flex-1 space-y-4">
                       {/* Title & Score */}
@@ -314,13 +316,7 @@ export default function JobDetailPage() {
                       {/* Actions */}
                       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-700">
                         <button
-                          onClick={() => {
-                            if (selectedClips.has(clip.id)) {
-                              toggleClipSelection(clip.id);
-                            } else {
-                              toggleClipSelection(clip.id);
-                            }
-                          }}
+                          onClick={() => toggleClipSelection(clip.id)}
                           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                             selectedClips.has(clip.id)
                               ? 'bg-green-600 hover:bg-green-500'
@@ -349,24 +345,22 @@ export default function JobDetailPage() {
                         <div className="flex-1" />
                         <button
                           onClick={() => {
-                            const currentIndex = clips.findIndex(c => c.id === previewClipId);
                             if (currentIndex > 0) {
                               setPreviewClipId(clips[currentIndex - 1].id);
                             }
                           }}
-                          disabled={clips.findIndex(c => c.id === previewClipId) === 0}
+                          disabled={currentIndex === 0}
                           className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           ← Previous
                         </button>
                         <button
                           onClick={() => {
-                            const currentIndex = clips.findIndex(c => c.id === previewClipId);
                             if (currentIndex < clips.length - 1) {
                               setPreviewClipId(clips[currentIndex + 1].id);
                             }
                           }}
-                          disabled={clips.findIndex(c => c.id === previewClipId) === clips.length - 1}
+                          disabled={currentIndex === clips.length - 1}
                           className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Next →
@@ -375,7 +369,7 @@ export default function JobDetailPage() {
                       
                       {/* Clip Position */}
                       <div className="text-center text-sm text-gray-500">
-                        Clip {clips.findIndex(c => c.id === previewClipId) + 1} of {clips.length}
+                        Clip {currentIndex + 1} of {clips.length}
                       </div>
                     </div>
                   );
