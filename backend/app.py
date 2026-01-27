@@ -128,6 +128,46 @@ def get_job(job_id: str):
         logger.error(f"Get job error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/jobs/{job_id}/retry")
+def retry_job(job_id: str):
+    """
+    Retry a failed job from the last failed step.
+    If files from previous steps exist, resume from there.
+    """
+    try:
+        job = db.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if job['status'] not in ['failed', 'ready']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Can only retry failed or ready jobs. Current status: {job['status']}"
+            )
+        
+        # Reset job status
+        db.update_job(
+            job_id, 
+            status='queued', 
+            error=None,
+            progress=0
+        )
+        
+        # Submit to background processing (will resume from appropriate step)
+        submit_job(job_id)
+        
+        return {
+            "job_id": job_id, 
+            "status": "queued",
+            "message": "Job requeued for processing"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Retry job error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/jobs/{job_id}/clips")
 def get_job_clips(job_id: str):
     """Get all clips for a job"""
@@ -184,6 +224,43 @@ def get_render(render_id: str):
         raise
     except Exception as e:
         logger.error(f"Get render error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/renders/{render_id}/retry")
+def retry_render(render_id: str):
+    """Retry a failed render"""
+    try:
+        render = db.get_render(render_id)
+        if not render:
+            raise HTTPException(status_code=404, detail="Render not found")
+        
+        if render['status'] not in ['failed']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Can only retry failed renders. Current status: {render['status']}"
+            )
+        
+        # Reset render status
+        db.update_render(
+            render_id,
+            status='queued',
+            error=None,
+            progress=0
+        )
+        
+        # Submit to background processing
+        submit_render(render_id)
+        
+        return {
+            "render_id": render_id,
+            "status": "queued",
+            "message": "Render requeued for processing"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Retry render error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/renders/{render_id}/download")

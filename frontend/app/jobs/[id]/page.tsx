@@ -65,6 +65,18 @@ export default function JobDetailPage() {
     }
   };
 
+  const handleRetryJob = async () => {
+    try {
+      await fetch(`http://localhost:8000/api/jobs/${jobId}/retry`, {
+        method: 'POST'
+      });
+      // Refresh job data
+      fetchJob();
+    } catch (error) {
+      console.error('Failed to retry job:', error);
+    }
+  };
+
   const fetchClips = async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/jobs/${jobId}/clips`);
@@ -88,6 +100,18 @@ export default function JobDetailPage() {
       pollRenderStatus(data.render_id);
     } catch (error) {
       console.error('Failed to create render:', error);
+    }
+  };
+
+  const handleRetryRender = async (renderId: string) => {
+    try {
+      await fetch(`http://localhost:8000/api/renders/${renderId}/retry`, {
+        method: 'POST'
+      });
+      // Start polling for render status
+      pollRenderStatus(renderId);
+    } catch (error) {
+      console.error('Failed to retry render:', error);
     }
   };
 
@@ -206,6 +230,15 @@ export default function JobDetailPage() {
                 Error: {job.error}
               </div>
             )}
+
+            {job.status === 'failed' && (
+              <button
+                onClick={handleRetryJob}
+                className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 font-medium"
+              >
+                🔄 Retry Job
+              </button>
+            )}
           </div>
 
           {job.status === 'ready' && clips.length > 0 && (
@@ -291,9 +324,17 @@ export default function JobDetailPage() {
                                 </a>
                               )}
                               {render.status === 'failed' && (
-                                <p className="text-sm text-red-600 dark:text-red-400">
-                                  Render failed: {render.error}
-                                </p>
+                                <div>
+                                  <p className="text-sm text-red-600 dark:text-red-400 mb-2">
+                                    Render failed: {render.error}
+                                  </p>
+                                  <button
+                                    onClick={() => handleRetryRender(renderId)}
+                                    className="w-full py-2 px-4 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm font-medium"
+                                  >
+                                    🔄 Retry Render
+                                  </button>
+                                </div>
                               )}
                             </div>
                           )

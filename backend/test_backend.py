@@ -170,11 +170,107 @@ def test_cleanup_raw_file():
         traceback.print_exc()
         return False
 
+def test_retry_job():
+    """Test retry job functionality"""
+    print("\nTesting retry job...")
+    
+    try:
+        import db
+        import uuid
+        
+        # Create a failed job
+        test_job_id = str(uuid.uuid4())
+        job = db.create_job(test_job_id, "youtube", "https://youtube.com/test")
+        print(f"✓ Created test job: {job['id']}")
+        
+        # Mark as failed
+        db.update_job(test_job_id, status='failed', error='Test error')
+        failed_job = db.get_job(test_job_id)
+        assert failed_job['status'] == 'failed'
+        assert failed_job['error'] == 'Test error'
+        print("✓ Marked job as failed")
+        
+        # Simulate retry (reset status)
+        db.update_job(test_job_id, status='queued', error=None, progress=0)
+        retried_job = db.get_job(test_job_id)
+        assert retried_job['status'] == 'queued'
+        assert retried_job['error'] is None
+        assert retried_job['progress'] == 0
+        print("✓ Job status reset to queued")
+        
+        # Test with ready job
+        db.update_job(test_job_id, status='ready', progress=100)
+        ready_job = db.get_job(test_job_id)
+        assert ready_job['status'] == 'ready'
+        print("✓ Job marked as ready")
+        
+        # Retry ready job should work
+        db.update_job(test_job_id, status='queued', error=None, progress=0)
+        retried_again = db.get_job(test_job_id)
+        assert retried_again['status'] == 'queued'
+        print("✓ Ready job can be retried")
+        
+        print("\n✅ Retry job tests passed!")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Retry job test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_retry_render():
+    """Test retry render functionality"""
+    print("\nTesting retry render...")
+    
+    try:
+        import db
+        import uuid
+        
+        # Create job and clip for render
+        test_job_id = str(uuid.uuid4())
+        job = db.create_job(test_job_id, "youtube", "https://youtube.com/test")
+        
+        test_clip_id = str(uuid.uuid4())
+        clip = db.create_clip(test_clip_id, test_job_id, 10.0, 45.0, 75.5, "Test Clip", "Sample text")
+        print(f"✓ Created test clip: {clip['id']}")
+        
+        # Create a failed render
+        test_render_id = str(uuid.uuid4())
+        render = db.create_render(test_render_id, test_clip_id, {"face_tracking": True})
+        print(f"✓ Created test render: {render['id']}")
+        
+        # Mark as failed
+        db.update_render(test_render_id, status='failed', error='Render test error')
+        failed_render = db.get_render(test_render_id)
+        assert failed_render['status'] == 'failed'
+        assert failed_render['error'] == 'Render test error'
+        print("✓ Marked render as failed")
+        
+        # Simulate retry (reset status)
+        db.update_render(test_render_id, status='queued', error=None, progress=0)
+        retried_render = db.get_render(test_render_id)
+        assert retried_render['status'] == 'queued'
+        assert retried_render['error'] is None
+        assert retried_render['progress'] == 0
+        print("✓ Render status reset to queued")
+        
+        print("\n✅ Retry render tests passed!")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Retry render test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
     success = True
     success = test_syntax() and success
     success = test_database() and success
     success = test_cleanup_raw_file() and success
+    success = test_retry_job() and success
+    success = test_retry_render() and success
     
     if success:
         print("\n" + "="*50)

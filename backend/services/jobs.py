@@ -46,13 +46,16 @@ def cleanup_raw_file(raw_path: str) -> bool:
 
 def process_job(job_id: str):
     """
-    Main job processing pipeline
+    Main job processing pipeline with resume support.
+    Steps:
     1. Acquire (download or upload)
     2. Normalize
     3. Transcribe
     4. Generate highlights
     5. Create thumbnails
     6. Cleanup raw files
+    
+    Will skip steps if output files already exist (for retry/resume).
     """
     raw_path = None
     
@@ -64,14 +67,24 @@ def process_job(job_id: str):
             logger.error(f"Job not found: {job_id}")
             return
         
-        # Step 1: Acquire
+        # Define paths
+        raw_path_youtube = RAW_DIR / f"{job_id}.mp4"
+        normalized_path = NORMALIZED_DIR / f"{job_id}.mp4"
+        transcript_path = TRANSCRIPTS_DIR / f"{job_id}.json"
+        
+        # ===== Step 1: Acquire =====
         db.update_job(job_id, status='processing', step='acquire', progress=10)
         
         if job['source_type'] == 'youtube':
-            raw_path = RAW_DIR / f"{job_id}.mp4"
-            if not download_youtube(job['source_url'], raw_path):
-                db.update_job(job_id, status='failed', error='Download failed')
-                return
+            raw_path = raw_path_youtube
+            
+            # Check if raw file already exists (resume case)
+            if raw_path.exists():
+                logger.info(f"Raw file exists, skipping download: {raw_path}")
+            else:
+                if not download_youtube(job['source_url'], raw_path):
+                    db.update_job(job_id, status='failed', error='Download failed')
+                    return
         else:
             # Upload - path should already be set
             raw_path = Path(job['raw_path']) if job.get('raw_path') else None
@@ -81,74 +94,85 @@ def process_job(job_id: str):
         
         db.update_job(job_id, raw_path=str(raw_path), progress=20)
         
-        # Step 2: Normalize
+        # ===== Step 2: Normalize =====
         db.update_job(job_id, step='normalize', progress=30)
-        normalized_path = NORMALIZED_DIR / f"{job_id}.mp4"
         
-        if not normalize_video(raw_path, normalized_path):
-            db.update_job(job_id, status='failed', error='Normalization failed')
-            return
+        # Check if normalized file already exists (resume case)
+        if normalized_path.exists():
+            logger.info(f"Normalized file exists, skipping normalization: {normalized_path}")
+        else:
+            if not normalize_video(raw_path, normalized_path):
+                db.update_job(job_id, status='failed', error='Normalization failed')
+                return
         
         db.update_job(job_id, normalized_path=str(normalized_path), progress=40)
         
-        # Step 3: Transcribe
+        # ===== Step 3: Transcribe =====
         db.update_job(job_id, step='transcribe', progress=50)
-        transcript_path = TRANSCRIPTS_DIR / f"{job_id}.json"
         
-        if not transcribe_video(normalized_path, transcript_path):
-            db.update_job(job_id, status='failed', error='Transcription failed')
-            return
+        # Check if transcript already exists (resume case)
+        if transcript_path.exists():
+            logger.info(f"Transcript exists, skipping transcription: {transcript_path}")
+        else:
+            if not transcribe_video(normalized_path, transcript_path):
+                db.update_job(job_id, status='failed', error='Transcription failed')
+                return
         
         db.update_job(job_id, progress=60)
         
-        # Step 4: Generate highlights
+        # ===== Step 4: Generate highlights =====
         db.update_job(job_id, step='generate_highlights', progress=70)
-        transcript = load_transcript(transcript_path)
         
-        highlights = generate_highlights(transcript)
+        # Check if clips already exist for this job (resume case)
+        existing_clips = db.get_clips_by_job(job_id)
         
-        if not highlights:
-            db.update_job(job_id, status='failed', error='No highlights generated')
-            return
-        
-        # Step 5: Create clips and thumbnails
-        db.update_job(job_id, step='create_clips', progress=80)
-        
-        for i, hl in enumerate(highlights):
-            clip_id = str(uuid.uuid4())
+        if existing_clips:
+            logger.info(f"Clips already exist ({len(existing_clips)}), skipping highlight generation")
+        else:
+            transcript = load_transcript(transcript_path)
+            highlights = generate_highlights(transcript)
             
-            # Generate thumbnail
-            mid_time = (hl['start'] + hl['end']) / 2
-            thumbnail_path = THUMBNAILS_DIR / f"{clip_id}.jpg"
-            generate_thumbnail(normalized_path, mid_time, thumbnail_path)
+            if not highlights:
+                db.update_job(job_id, status='failed', error='No highlights generated')
+                return
             
-            # Create clip record
-            db.create_clip(
-                clip_id=clip_id,
-                job_id=job_id,
-                start_sec=hl['start'],
-                end_sec=hl['end'],
-                score=hl['score'],
-                title=hl['title'],
-                transcript_snippet=hl['snippet'],
-                thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else ""
-            )
+            # Step 5: Create clips and thumbnails
+            db.update_job(job_id, step='create_clips', progress=80)
+            
+            for i, hl in enumerate(highlights):
+                clip_id = str(uuid.uuid4())
+                
+                # Generate thumbnail
+                mid_time = (hl['start'] + hl['end']) / 2
+                thumbnail_path = THUMBNAILS_DIR / f"{clip_id}.jpg"
+                generate_thumbnail(normalized_path, mid_time, thumbnail_path)
+                
+                # Create clip record
+                db.create_clip(
+                    clip_id=clip_id,
+                    job_id=job_id,
+                    start_sec=hl['start'],
+                    end_sec=hl['end'],
+                    score=hl['score'],
+                    title=hl['title'],
+                    transcript_snippet=hl['snippet'],
+                    thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else ""
+                )
         
-        # Step 6: Cleanup raw file to save disk space
+        # ===== Step 6: Cleanup raw file =====
         db.update_job(job_id, step='cleanup', progress=95)
-        if raw_path:
-            if cleanup_raw_file(str(raw_path)):
-                # Clear raw_path in database only if cleanup succeeded
-                db.update_job(job_id, raw_path="")
+        if raw_path and raw_path.exists():
+            cleanup_raw_file(str(raw_path))
+            db.update_job(job_id, raw_path="")
         
-        # Done
+        # ===== Done =====
         db.update_job(job_id, status='ready', step='complete', progress=100)
         logger.info(f"Job complete: {job_id}")
         
     except Exception as e:
         logger.error(f"Job processing error: {e}", exc_info=True)
         db.update_job(job_id, status='failed', error=str(e))
-        # Don't cleanup on failure - might need raw file for debugging
+        # Don't cleanup on failure - might need files for retry
 
 def process_render(render_id: str):
     """
@@ -174,6 +198,11 @@ def process_render(render_id: str):
             db.update_render(render_id, status='failed', error='Job video not found')
             return
         
+        normalized_path = Path(job['normalized_path'])
+        if not normalized_path.exists():
+            db.update_render(render_id, status='failed', error='Normalized video file not found')
+            return
+        
         # Update status
         db.update_render(render_id, status='processing', progress=10)
         
@@ -185,11 +214,22 @@ def process_render(render_id: str):
         # Output path
         output_path = RENDERS_DIR / f"{render_id}.mp4"
         
+        # Check if render output already exists (resume case - unlikely but handle it)
+        if output_path.exists():
+            logger.info(f"Render output exists: {output_path}")
+            db.update_render(
+                render_id,
+                status='ready',
+                progress=100,
+                output_path=str(output_path)
+            )
+            return
+        
         # Render
         db.update_render(render_id, progress=30)
         
         success = render_clip(
-            video_path=Path(job['normalized_path']),
+            video_path=normalized_path,
             output_path=output_path,
             start_sec=clip['start_sec'],
             end_sec=clip['end_sec'],
