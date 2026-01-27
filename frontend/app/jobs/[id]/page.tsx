@@ -229,32 +229,157 @@ export default function JobDetailPage() {
             </button>
           </div>
 
-          {/* Preview Player */}
+          {/* Preview Player with Info Panel */}
           {previewClipId && (
             <div className="bg-gray-800 rounded-lg p-4 mb-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">Preview</h2>
                 <button
                   onClick={() => setPreviewClipId(null)}
-                  className="text-gray-400 hover:text-white"
+                  className="text-gray-400 hover:text-white text-2xl"
                 >
-                  ✕ Close
+                  ✕
                 </button>
               </div>
-              <div className="flex justify-center">
-                <video
-                  key={previewClipId + faceTracking}
-                  controls
-                  autoPlay
-                  muted
-                  className="max-h-[600px] rounded"
-                  style={{ aspectRatio: '9/16' }}
-                >
-                  <source
-                    src={`${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
-                    type="video/mp4"
-                  />
-                </video>
+              
+              {/* Video + Info Panel Layout */}
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Video Player - Left Side */}
+                <div className="flex justify-center lg:justify-start">
+                  <video
+                    key={previewClipId + faceTracking}
+                    controls
+                    autoPlay
+                    className="rounded max-h-[500px] lg:max-h-[600px]"
+                    style={{ aspectRatio: '9/16' }}
+                  >
+                    <source
+                      src={`${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
+                      type="video/mp4"
+                    />
+                  </video>
+                </div>
+                
+                {/* Info Panel - Right Side */}
+                {(() => {
+                  const clip = clips.find(c => c.id === previewClipId);
+                  if (!clip) return null;
+                  
+                  return (
+                    <div className="flex-1 space-y-4">
+                      {/* Title & Score */}
+                      <div>
+                        <h3 className="text-2xl font-bold text-white mb-2">{clip.title}</h3>
+                        <div className="flex items-center gap-3">
+                          <span className="bg-green-600 px-3 py-1 rounded-full text-sm font-medium">
+                            Score: {clip.score.toFixed(1)}
+                          </span>
+                          <span className="bg-blue-600 px-3 py-1 rounded-full text-sm font-medium">
+                            {formatTime(clip.end_sec - clip.start_sec)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Timestamp */}
+                      <div className="bg-gray-700/50 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-400 mb-2">⏱️ Timestamp</h4>
+                        <p className="text-lg font-mono">
+                          {formatTime(clip.start_sec)} → {formatTime(clip.end_sec)}
+                        </p>
+                      </div>
+                      
+                      {/* Transcript */}
+                      <div className="bg-gray-700/50 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-400 mb-2">📝 Transcript</h4>
+                        <p className="text-gray-200 leading-relaxed">
+                          &ldquo;{clip.transcript_snippet}&rdquo;
+                        </p>
+                      </div>
+                      
+                      {/* Why This Highlight */}
+                      <div className="bg-gray-700/50 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-400 mb-2">🎯 Why This Highlight?</h4>
+                        <ul className="text-sm text-gray-300 space-y-1">
+                          {clip.score >= 8 && <li>✓ Very high engagement potential</li>}
+                          {clip.score >= 6 && clip.score < 8 && <li>✓ Good engagement potential</li>}
+                          {clip.transcript_snippet.length > 50 && <li>✓ Rich content with context</li>}
+                          {(clip.end_sec - clip.start_sec) >= 25 && (clip.end_sec - clip.start_sec) <= 45 && (
+                            <li>✓ Ideal duration for social media</li>
+                          )}
+                          {(clip.end_sec - clip.start_sec) < 25 && <li>✓ Short and punchy</li>}
+                          {(clip.end_sec - clip.start_sec) > 45 && <li>✓ Extended content for deeper engagement</li>}
+                        </ul>
+                      </div>
+                      
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-700">
+                        <button
+                          onClick={() => {
+                            if (selectedClips.has(clip.id)) {
+                              toggleClipSelection(clip.id);
+                            } else {
+                              toggleClipSelection(clip.id);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                            selectedClips.has(clip.id)
+                              ? 'bg-green-600 hover:bg-green-500'
+                              : 'bg-gray-600 hover:bg-gray-500'
+                          }`}
+                        >
+                          {selectedClips.has(clip.id) ? '✓ Selected' : '+ Select for Render'}
+                        </button>
+                        
+                        <button
+                          onClick={async () => {
+                            const res = await fetch(`${API_URL}/api/clips/${clip.id}/render`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ face_tracking: faceTracking, captions })
+                            });
+                            const data = await res.json();
+                            pollRenderStatus(data.render_id);
+                          }}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-medium"
+                        >
+                          🚀 Render This Clip
+                        </button>
+                        
+                        {/* Navigation */}
+                        <div className="flex-1" />
+                        <button
+                          onClick={() => {
+                            const currentIndex = clips.findIndex(c => c.id === previewClipId);
+                            if (currentIndex > 0) {
+                              setPreviewClipId(clips[currentIndex - 1].id);
+                            }
+                          }}
+                          disabled={clips.findIndex(c => c.id === previewClipId) === 0}
+                          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          ← Previous
+                        </button>
+                        <button
+                          onClick={() => {
+                            const currentIndex = clips.findIndex(c => c.id === previewClipId);
+                            if (currentIndex < clips.length - 1) {
+                              setPreviewClipId(clips[currentIndex + 1].id);
+                            }
+                          }}
+                          disabled={clips.findIndex(c => c.id === previewClipId) === clips.length - 1}
+                          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next →
+                        </button>
+                      </div>
+                      
+                      {/* Clip Position */}
+                      <div className="text-center text-sm text-gray-500">
+                        Clip {clips.findIndex(c => c.id === previewClipId) + 1} of {clips.length}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
