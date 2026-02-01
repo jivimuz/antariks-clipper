@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { getApiEndpoint } from "../lib/api";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function ResetPasswordPage() {
   const [step, setStep] = useState<"request" | "confirm">("request");

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getApiEndpoint } from "../lib/api";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AccountPage() {
   const [email, setEmail] = useState("");

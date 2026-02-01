@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2 } from 'lucide-react';
-import { getApiEndpoint } from '../lib/api';
-import { isValidYouTubeUrl, validateVideoFile } from '../lib/validation';
+import { getApiEndpoint } from '@/lib/api';
+import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 
 function useIsLoggedIn() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);

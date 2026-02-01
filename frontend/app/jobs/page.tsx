@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar } from 'lucide-react';
 import toast from "react-hot-toast";
-import { getApiEndpoint } from '../lib/api';
+import { getApiEndpoint } from '@/lib/api';
 
 interface Job {
   id: string;

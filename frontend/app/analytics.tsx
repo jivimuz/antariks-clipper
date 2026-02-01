@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getApiEndpoint } from "./lib/api";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<any>(null);

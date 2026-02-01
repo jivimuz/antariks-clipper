@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { getApiEndpoint } from "../../lib/api";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AdminLicensesPage() {
   const [licenses, setLicenses] = useState<any[]>([]);

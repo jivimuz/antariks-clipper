@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { getApiEndpoint } from "../lib/api";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");

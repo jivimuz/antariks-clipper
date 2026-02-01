@@ -10,7 +10,7 @@ import {
   ScanFace, Share2, MoreVertical, Loader2, Youtube, FileVideo,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { getApiUrl, getApiEndpoint } from '../../lib/api';
+import { getApiUrl, getApiEndpoint } from '@/lib/api';
 
 interface Job {
   id: string;
