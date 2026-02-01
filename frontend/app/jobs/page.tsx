@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar } from 'lucide-react';
 import toast from "react-hot-toast";
 import { getApiEndpoint } from '@/lib/api';
+import Breadcrumb from '@/components/Breadcrumb';
+import { SkeletonJobList } from '@/components/Skeleton';
 
 interface Job {
   id: string;
@@ -71,16 +73,12 @@ export default function JobsPage() {
       <div className="container mx-auto px-4 py-16 relative z-10">
         <div className="max-w-5xl mx-auto">
           
+          {/* Breadcrumb */}
+          <Breadcrumb items={[{ label: 'Jobs' }]} />
+          
           {/* Header */}
           <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
-              <a
-                href="/"
-                className="inline-flex items-center text-slate-400 hover:text-emerald-400 mb-4 transition-colors group text-sm font-medium"
-              >
-                <ArrowLeft size={16} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-                Back to Generator
-              </a>
               <h1 className="text-4xl font-bold text-white tracking-tight">
                 Processing <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">Queue</span>
               </h1>
@@ -90,15 +88,7 @@ export default function JobsPage() {
 
           {/* Content */}
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 space-y-4">
-              <div className="relative">
-                <div className="w-12 h-12 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-                </div>
-              </div>
-              <p className="text-slate-500 animate-pulse">Syncing jobs...</p>
-            </div>
+            <SkeletonJobList />
           ) : jobs.length === 0 ? (
             <div className="bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-3xl p-16 text-center shadow-2xl">
               <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6">

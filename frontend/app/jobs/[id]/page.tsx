@@ -11,6 +11,8 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { getApiUrl, getApiEndpoint } from '@/lib/api';
+import Breadcrumb from '@/components/Breadcrumb';
+import { SkeletonClipGrid } from '@/components/Skeleton';
 
 interface Job {
   id: string;
@@ -262,13 +264,15 @@ export default function JobDetailPage() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-8">
         
+        {/* Breadcrumb */}
+        <Breadcrumb items={[
+          { label: 'Jobs', href: '/jobs' },
+          { label: `Job #${job.id.slice(0, 8)}` }
+        ]} />
+        
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-6 sm:mb-10">
           <div>
-            <Link href="/jobs" className="inline-flex items-center text-slate-400 hover:text-emerald-400 mb-2 transition-colors group text-sm font-medium" aria-label="Back to Jobs">
-              <ArrowLeft size={16} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-              Back to Jobs
-            </Link>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
                 Job Details <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">#{job.id.slice(0, 8)}</span>
