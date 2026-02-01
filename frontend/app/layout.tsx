@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "./toast-provider";
+import LicenseGuard from "@/components/LicenseGuard";
 
 export const metadata: Metadata = {
   title: "Antariks Clipper",
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <ToastProvider>
-          {children}
+          <LicenseGuard>
+            {children}
+          </LicenseGuard>
         </ToastProvider>
       </body>
     </html>

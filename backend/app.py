@@ -9,8 +9,6 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Optional, List, Dict
 
-import stripe
-
 import db
 from db import log_action
 
@@ -26,6 +24,7 @@ from config import RAW_DIR
 from services.cloud import upload_file_to_s3
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
+from services.license import activate_license, get_license_status, check_license_valid
 
 # Setup logging
 logging.basicConfig(
@@ -60,6 +59,99 @@ def health_check():
     }
 
 
+# ==================== LICENSE ENDPOINTS ====================
+
+class LicenseActivateRequest(BaseModel):
+    license_key: str
+
+@app.post("/api/license/activate")
+def license_activate(payload: LicenseActivateRequest):
+    """
+    Activate a license key.
+    Validates with server and saves if valid.
+    """
+    try:
+        result = activate_license(payload.license_key)
+        if result.get("success"):
+            logger.info(f"License activated for {result.get('owner')}")
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Invalid license key"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"License activation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/license/status")
+def license_status():
+    """
+    Get current license status.
+    Returns activation status and validity.
+    """
+    try:
+        status = get_license_status()
+        return status
+    except Exception as e:
+        logger.error(f"License status check error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# License middleware - checks license on protected endpoints
+@app.middleware("http")
+async def license_middleware(request: Request, call_next):
+    """
+    Middleware to check license validity for all API endpoints.
+    Excludes license endpoints and health check.
+    """
+    # Normalize path by removing trailing slash and query params
+    path = request.url.path.rstrip('/')
+    
+    # Skip license check for these paths
+    excluded_paths = [
+        "/health",
+        "/api/license/activate",
+        "/api/license/status",
+        "/docs",
+        "/redoc",
+        "/openapi.json"
+    ]
+    
+    # Check if path should be protected (starts with /api/ and not in excluded list)
+    is_api_path = path.startswith("/api")
+    is_excluded = path in excluded_paths or any(path.startswith(excluded) for excluded in excluded_paths)
+    
+    if is_api_path and not is_excluded:
+        try:
+            status = get_license_status()
+            
+            if not status.get("activated"):
+                return Response(
+                    content=json.dumps({"detail": "License not activated"}),
+                    status_code=401,
+                    media_type="application/json"
+                )
+            
+            if not status.get("valid", False):
+                return Response(
+                    content=json.dumps({
+                        "detail": status.get("error", "License is not valid")
+                    }),
+                    status_code=403,
+                    media_type="application/json"
+                )
+        except Exception as e:
+            logger.error(f"License middleware error: {e}")
+            return Response(
+                content=json.dumps({"detail": "License validation error"}),
+                status_code=500,
+                media_type="application/json"
+            )
+    
+    response = await call_next(request)
+    return response
+
 
 # Password reset request and reset endpoints
 import secrets
@@ -71,29 +163,6 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
-
-class PaymentSessionRequest(BaseModel):
-    plan: str
-    email: str
-
-# Payment: Create Stripe Checkout session
-@app.post("/api/payment/create-session")
-def create_payment_session(payload: PaymentSessionRequest):
-    """Create a Stripe checkout session for license purchase"""
-    try:
-        # This is a placeholder - configure with real Stripe credentials
-        # stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-        logger.info(f"Payment session requested for {payload.email} - plan: {payload.plan}")
-        
-        # For demo purposes, return a mock session
-        return {
-            "session_id": f"mock_session_{secrets.token_hex(16)}",
-            "url": "https://checkout.stripe.com/demo",
-            "message": "Payment integration requires Stripe configuration"
-        }
-    except Exception as e:
-        logger.error(f"Payment session creation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Admin: List all users endpoint
 @app.get("/api/admin/users")
@@ -355,23 +424,6 @@ def get_analytics():
 @app.get("/api/admin/audit-logs")
 def admin_audit_logs():
     return {"logs": get_audit_logs()}
-
-# Stripe webhook for payment events (automatic license activation)
-@app.post("/api/payment/webhook")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-    endpoint_secret = "whsec_REPLACE_WITH_YOUR_SECRET"
-    event = None
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
-        # ...existing code...
-    except Exception as e:
-        print(f"Webhook error: {e}")
-        return {"error": str(e)}
-    # ...existing code...
 
 # Models
 class YouTubeJobCreate(BaseModel):
