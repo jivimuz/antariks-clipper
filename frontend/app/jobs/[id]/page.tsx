@@ -45,13 +45,18 @@ export default function JobDetailPage() {
   const [rendering, setRendering] = useState(false);
   const [renders, setRenders] = useState<Record<string, Render>>({});
   const [error, setError] = useState<string>('');
-  const [pollCount, setPollCount] = useState(0);
 
-  const MAX_POLL_COUNT = 360; // 12 minutes at 2 second intervals
+  // Polling configuration
+  const POLL_INTERVAL_MS = 2000;
+  const MAX_JOB_POLL_TIME_MS = 12 * 60 * 1000; // 12 minutes
+  const MAX_RENDER_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
+  const MAX_JOB_POLL_COUNT = MAX_JOB_POLL_TIME_MS / POLL_INTERVAL_MS;
+  const MAX_RENDER_POLL_COUNT = MAX_RENDER_POLL_TIME_MS / POLL_INTERVAL_MS;
 
   // Fetch job
   useEffect(() => {
     let currentPollCount = 0;
+    let intervalId: NodeJS.Timeout;
     
     const fetchJob = async () => {
       try {
@@ -63,9 +68,10 @@ export default function JobDetailPage() {
         setJob(data);
         setError('');
         
-        // Reset poll count when job completes or fails
+        // Stop polling when job completes or fails
         if (data.status === 'ready' || data.status === 'failed') {
-          currentPollCount = MAX_POLL_COUNT; // Stop polling
+          clearInterval(intervalId);
+          return;
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load job';
@@ -74,18 +80,18 @@ export default function JobDetailPage() {
     };
     
     fetchJob();
-    const interval = setInterval(() => {
+    intervalId = setInterval(() => {
       currentPollCount++;
-      if (currentPollCount >= MAX_POLL_COUNT) {
-        clearInterval(interval);
+      if (currentPollCount >= MAX_JOB_POLL_COUNT) {
+        clearInterval(intervalId);
         setError('Job processing timeout - please refresh the page');
       } else {
         fetchJob();
       }
-    }, 2000);
+    }, POLL_INTERVAL_MS);
     
-    return () => clearInterval(interval);
-  }, [jobId]);
+    return () => clearInterval(intervalId);
+  }, [jobId, POLL_INTERVAL_MS, MAX_JOB_POLL_COUNT]);
 
   // Fetch clips when job is ready
   useEffect(() => {
@@ -164,7 +170,7 @@ export default function JobDetailPage() {
 
   const pollRenderStatus = async (renderId: string) => {
     let pollAttempts = 0;
-    const maxPollAttempts = 300; // 10 minutes at 2 second intervals
+    let intervalId: NodeJS.Timeout;
     
     const poll = async () => {
       try {
@@ -175,22 +181,33 @@ export default function JobDetailPage() {
         const render = await res.json();
         setRenders(prev => ({ ...prev, [renderId]: render }));
         
-        if (render.status !== 'ready' && render.status !== 'failed') {
-          pollAttempts++;
-          if (pollAttempts < maxPollAttempts) {
-            setTimeout(poll, 2000);
-          } else {
-            setRenders(prev => ({ 
-              ...prev, 
-              [renderId]: { ...render, status: 'failed', error: 'Render timeout' } 
-            }));
-          }
+        // Stop polling when render completes or fails
+        if (render.status === 'ready' || render.status === 'failed') {
+          clearInterval(intervalId);
+          return;
         }
       } catch (err) {
         console.error('Poll render error:', err);
       }
     };
+    
     poll();
+    intervalId = setInterval(() => {
+      pollAttempts++;
+      if (pollAttempts >= MAX_RENDER_POLL_COUNT) {
+        clearInterval(intervalId);
+        setRenders(prev => ({ 
+          ...prev, 
+          [renderId]: { 
+            ...prev[renderId],
+            status: 'failed', 
+            error: 'Render timeout' 
+          } 
+        }));
+      } else {
+        poll();
+      }
+    }, POLL_INTERVAL_MS);
   };
 
   const formatTime = (seconds: number) => {

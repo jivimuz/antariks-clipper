@@ -30,9 +30,9 @@ export default function Home() {
           setLoading(false);
           return;
         }
-        // Validate YouTube URL format
-        if (!youtubeUrl.match(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/).+/)) {
-          setError('Please enter a valid YouTube URL');
+        // Validate YouTube URL format with video ID
+        if (!youtubeUrl.match(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]{11}$/)) {
+          setError('Please enter a valid YouTube URL with video ID');
           setLoading(false);
           return;
         }

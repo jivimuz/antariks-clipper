@@ -1,6 +1,7 @@
 """FastAPI application for Antariks Clipper"""
 import logging
 import uuid
+import re
 from pathlib import Path
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Response
@@ -12,6 +13,16 @@ import db
 from config import RAW_DIR, ALLOWED_ORIGINS, MAX_FILE_SIZE
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
+
+# Validation patterns
+YOUTUBE_URL_PATTERN = re.compile(
+    r'^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[\w-]{11}$',
+    re.IGNORECASE
+)
+UUID_PATTERN = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE
+)
 
 # Setup logging
 logging.basicConfig(
@@ -67,9 +78,9 @@ async def create_job(
             if not youtube_url:
                 raise HTTPException(status_code=400, detail="youtube_url required")
             
-            # Validate YouTube URL format
-            if not youtube_url.startswith(('https://www.youtube.com', 'https://youtu.be', 'http://www.youtube.com', 'http://youtu.be')):
-                raise HTTPException(status_code=400, detail="Invalid YouTube URL format")
+            # Validate YouTube URL format with video ID
+            if not YOUTUBE_URL_PATTERN.match(youtube_url):
+                raise HTTPException(status_code=400, detail="Invalid YouTube URL format - must include valid video ID")
             
             # Create job
             job = db.create_job(job_id, source_type="youtube", source_url=youtube_url)
@@ -463,11 +474,12 @@ async def render_selected_clips(
             raise HTTPException(status_code=400, detail="No clip IDs provided")
         
         # Validate UUID format for each clip_id
-        import re
-        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
-        invalid_ids = [cid for cid in clip_id_list if not uuid_pattern.match(cid)]
+        invalid_ids = [cid for cid in clip_id_list if not UUID_PATTERN.match(cid)]
         if invalid_ids:
-            raise HTTPException(status_code=400, detail=f"Invalid clip ID format: {', '.join(invalid_ids[:3])}")
+            error_msg = f"Invalid clip ID format: {', '.join(invalid_ids[:3])}"
+            if len(invalid_ids) > 3:
+                error_msg += f" and {len(invalid_ids) - 3} more"
+            raise HTTPException(status_code=400, detail=error_msg)
         
         render_ids = []
         not_found_clips = []
