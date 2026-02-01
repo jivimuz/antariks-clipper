@@ -265,6 +265,46 @@ def test_retry_render():
         traceback.print_exc()
         return False
 
+def test_user_register_and_login():
+    """Test user registration and login endpoints"""
+    print("\nTesting user register & login...")
+    try:
+        import httpx
+        import random
+        import string
+        from fastapi import status
+
+        # Gunakan port default uvicorn (8000)
+        base_url = "http://127.0.0.1:8000"
+        username = f"testuser_{random.randint(1000,9999)}"
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+        email = f"{username}@example.com"
+
+        # Register user
+        resp = httpx.post(f"{base_url}/register", json={
+            "username": username,
+            "password": password,
+            "email": email
+        })
+        assert resp.status_code == 200, f"Register failed: {resp.text}"
+        print(f"✓ Registered user: {username}")
+
+        # Login user
+        resp = httpx.post(f"{base_url}/login", json={
+            "username": username,
+            "password": password
+        })
+        assert resp.status_code == 200, f"Login failed: {resp.text}"
+        data = resp.json()
+        assert "token" in data, "No token in login response"
+        print(f"✓ Login success, token received")
+        return True
+    except Exception as e:
+        print(f"\n❌ User register/login test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
     success = True
     success = test_syntax() and success
@@ -272,6 +312,7 @@ if __name__ == "__main__":
     success = test_cleanup_raw_file() and success
     success = test_retry_job() and success
     success = test_retry_render() and success
+    success = test_user_register_and_login() and success
     
     if success:
         print("\n" + "="*50)

@@ -15,15 +15,16 @@ env/
 dist/
 build/
 
-# Frontend
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/build/
+
+node_modules/
+/.next/
+/out/
+/build/
 frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
+backend/.env
 
 # OS
 .DS_Store

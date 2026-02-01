@@ -7,3 +7,5 @@ opencv-python==4.10.0.84
 mediapipe==0.10.18
 faster-whisper==1.1.0
 numpy==1.26.4
+
+boto3==1.34.0

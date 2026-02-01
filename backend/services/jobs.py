@@ -1,3 +1,12 @@
+import requests
+
+# Utility: call webhook
+def notify_webhook(url: str, payload: dict):
+    try:
+        if url:
+            requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        logger.warning(f"Failed to notify webhook {url}: {e}")
 """Background job processing using ThreadPoolExecutor"""
 import logging
 import uuid
@@ -136,10 +145,18 @@ def process_job(job_id: str):
         # ===== Done - Ready for Preview =====
         db.update_job(job_id, status='ready', step='preview_ready', progress=100)
         logger.info(f"Job ready for preview: {job_id}")
+        # Notify webhook if set
+        job = db.get_job(job_id)
+        if job and job.get('webhook_url'):
+            notify_webhook(job['webhook_url'], {"job_id": job_id, "status": "ready"})
         
     except Exception as e:
         logger.error(f"Job processing error: {e}", exc_info=True)
         db.update_job(job_id, status='failed', error=str(e))
+        # Notify webhook if set
+        job = db.get_job(job_id)
+        if job and job.get('webhook_url'):
+            notify_webhook(job['webhook_url'], {"job_id": job_id, "status": "failed", "error": str(e)})
 
 def process_render(render_id: str):
     """
@@ -195,7 +212,7 @@ def process_render(render_id: str):
         # Render
         db.update_render(render_id, progress=30)
         
-        success = render_clip(
+        s3_url = render_clip(
             video_path=raw_path,
             output_path=output_path,
             start_sec=clip['start_sec'],
@@ -204,20 +221,26 @@ def process_render(render_id: str):
             captions=captions,
             transcript_snippet=clip.get('transcript_snippet', '')
         )
-        
-        if not success:
+        if not s3_url:
             db.update_render(render_id, status='failed', error='Render failed')
             return
-        
         # Done
         db.update_render(
             render_id,
             status='ready',
             progress=100,
-            output_path=str(output_path)
+            output_path=s3_url
         )
-        logger.info(f"Render complete: {render_id}")
+        logger.info(f"Render complete: {render_id}, S3: {s3_url}")
+        # Notify webhook if set
+        render = db.get_render(render_id)
+        if render and render.get('webhook_url'):
+            notify_webhook(render['webhook_url'], {"render_id": render_id, "status": "ready"})
         
     except Exception as e:
         logger.error(f"Render processing error: {e}", exc_info=True)
         db.update_render(render_id, status='failed', error=str(e))
+        # Notify webhook if set
+        render = db.get_render(render_id)
+        if render and render.get('webhook_url'):
+            notify_webhook(render['webhook_url'], {"render_id": render_id, "status": "failed", "error": str(e)})

@@ -1,9 +1,27 @@
-"""FFmpeg utilities for video processing"""
+
+from pathlib import Path
 import subprocess
 import logging
-from pathlib import Path
 from typing import Optional, Tuple
 import json
+
+def add_watermark(input_path: Path, output_path: Path, text: str) -> bool:
+    """Add watermark text to video using ffmpeg drawtext"""
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            'ffmpeg', '-y', '-i', str(input_path),
+            '-vf', f"drawtext=text='{text}':fontcolor=white:fontsize=36:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.5:boxborderw=5",
+            '-c:a', 'copy', str(output_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0:
+            return True
+        logger.error(f"Add watermark error: {result.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Add watermark exception: {e}")
+        return False
 
 logger = logging.getLogger(__name__)
 

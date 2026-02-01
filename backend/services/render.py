@@ -42,8 +42,10 @@ def render_clip(
     end_sec: float,
     face_tracking: bool = False,
     captions: bool = False,
-    transcript_snippet: str = ""
-) -> bool:
+    transcript_snippet: str = "",
+    watermark_text: str = "",
+    upload_to_s3: bool = True
+) -> str:
     """
     Render vertical 9:16 clip
     
@@ -59,6 +61,7 @@ def render_clip(
     Returns:
         True if successful
     """
+    from services.cloud import upload_file_to_s3
     try:
         duration = end_sec - start_sec
         
@@ -148,9 +151,24 @@ def render_clip(
                         logger.error("Failed to crop and scale")
                         return False
         
+        # Watermark
+        if watermark_text:
+            from services.ffmpeg import add_watermark
+            watermarked_path = output_path.parent / (output_path.stem + "_wm.mp4")
+            if add_watermark(output_path, watermarked_path, watermark_text):
+                output_path.unlink(missing_ok=True)
+                watermarked_path.rename(output_path)
         logger.info(f"Render complete: {output_path}")
-        return True
+        s3_url = None
+        if upload_to_s3:
+            try:
+                s3_key = f"renders/{output_path.name}"
+                s3_url = upload_file_to_s3(output_path, s3_key)
+                logger.info(f"Uploaded render to S3: {s3_url}")
+            except Exception as e:
+                logger.error(f"S3 upload error: {e}")
+        return s3_url or str(output_path)
         
     except Exception as e:
         logger.error(f"Render error: {e}")
-        return False
+        return None

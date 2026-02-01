@@ -1,18 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar } from 'lucide-react';
+import toast from "react-hot-toast";
 
 interface Job {
   id: string;
   source_type: string;
   source_url?: string;
-  status: string;
+  status: 'ready' | 'processing' | 'failed';
   step: string;
   progress: number;
   error?: string;
   created_at: string;
 }
+
+
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -27,8 +30,9 @@ export default function JobsPage() {
       const response = await fetch('http://localhost:8000/api/jobs');
       const data = await response.json();
       setJobs(data.jobs);
+      toast.success("Jobs loaded!");
     } catch (error) {
-      console.error('Failed to fetch jobs:', error);
+      toast.error('Failed to fetch jobs');
     } finally {
       setLoading(false);
     }
@@ -37,105 +41,165 @@ export default function JobsPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ready':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]';
       case 'processing':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]';
       case 'failed':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
+        return 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        return 'bg-slate-800 text-slate-400 border-slate-700';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'ready': return <CheckCircle2 size={16} />;
+      case 'processing': return <Loader2 size={16} className="animate-spin" />;
+      case 'failed': return <AlertCircle size={16} />;
+      default: return <Clock size={16} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto px-4 py-16">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8">
-            <Link
-              href="/"
-              className="text-purple-600 hover:text-purple-700 dark:text-purple-400 font-medium"
-            >
-              ← Back to Home
-            </Link>
+    <div className="min-h-screen bg-slate-950 relative overflow-hidden font-sans selection:bg-emerald-500/30">
+      {/* Background Ambient Effects */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-teal-600/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
+
+      <div className="container mx-auto px-4 py-16 relative z-10">
+        <div className="max-w-5xl mx-auto">
+          
+          {/* Header */}
+          <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <a
+                href="/"
+                className="inline-flex items-center text-slate-400 hover:text-emerald-400 mb-4 transition-colors group text-sm font-medium"
+              >
+                <ArrowLeft size={16} className="mr-2 group-hover:-translate-x-1 transition-transform" />
+                Back to Generator
+              </a>
+              <h1 className="text-4xl font-bold text-white tracking-tight">
+                Processing <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">Queue</span>
+              </h1>
+              <p className="text-slate-400 mt-2 text-lg">Track your video generation status and history.</p>
+            </div>
           </div>
 
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-8">
-            All Jobs
-          </h1>
-
+          {/* Content */}
           {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent"></div>
-              <p className="mt-4 text-gray-600 dark:text-gray-400">Loading jobs...</p>
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <div className="relative">
+                <div className="w-12 h-12 border-4 border-slate-800 border-t-emerald-500 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
+                </div>
+              </div>
+              <p className="text-slate-500 animate-pulse">Syncing jobs...</p>
             </div>
           ) : jobs.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 text-center">
-              <p className="text-gray-600 dark:text-gray-400 text-lg">
-                No jobs yet. Create your first highlight!
+            <div className="bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-3xl p-16 text-center shadow-2xl">
+              <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Clock size={40} className="text-slate-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">No jobs found</h3>
+              <p className="text-slate-400 mb-8 max-w-md mx-auto">
+                You haven't generated any clips yet. Start your first job to see it appear here.
               </p>
-              <Link
+              <a
                 href="/"
-                className="inline-block mt-6 px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg hover:bg-purple-600"
+                className="inline-flex items-center px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40"
               >
-                Create Job
-              </Link>
+                Create New Job
+              </a>
             </div>
           ) : (
             <div className="space-y-4">
               {jobs.map((job) => (
-                <Link
+                 <a
                   key={job.id}
                   href={`/jobs/${job.id}`}
-                  className="block bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow"
+                  className="block group relative bg-slate-900/40 hover:bg-slate-900/60 backdrop-blur-md border border-white/5 hover:border-emerald-500/20 rounded-2xl p-6 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-900/10 cursor-pointer overflow-hidden"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                            job.status
-                          )}`}
-                        >
-                          {job.status}
-                        </span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                          {job.source_type}
-                        </span>
-                      </div>
-                      {job.source_url && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-2xl">
-                          {job.source_url}
-                        </p>
-                      )}
-                      {job.step && (
-                        <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-                          Step: {job.step}
-                        </p>
-                      )}
-                      {job.error && (
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                          Error: {job.error}
-                        </p>
-                      )}
-                    </div>
-                    <div className="ml-4">
-                      {job.status === 'processing' && (
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-purple-600">
-                            {job.progress}%
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/0 via-emerald-500/0 to-emerald-500/0 group-hover:via-emerald-500/5 transition-all duration-500" />
+                  
+                  <div className="relative flex flex-col md:flex-row md:items-center gap-6">
+                    
+                    {/* Icon & Source Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-4">
+                        <div className={`p-3 rounded-xl shrink-0 ${
+                          job.source_type === 'youtube' 
+                            ? 'bg-red-500/10 text-red-400' 
+                            : 'bg-blue-500/10 text-blue-400'
+                        }`}>
+                          {job.source_type === 'youtube' ? <Youtube size={24} /> : <FileVideo size={24} />}
+                        </div>
+                        
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border uppercase tracking-wider ${getStatusColor(job.status)}`}>
+                              {getStatusIcon(job.status)}
+                              {job.status}
+                            </span>
+                            <span className="text-xs text-slate-500 flex items-center gap-1">
+                              <Calendar size={12} />
+                              {new Date(job.created_at).toLocaleDateString()}
+                            </span>
                           </div>
-                          <div className="w-32 h-2 bg-gray-200 dark:bg-gray-700 rounded-full mt-2">
-                            <div
-                              className="h-full bg-purple-500 rounded-full transition-all"
+                          
+                          <h3 className="text-lg font-semibold text-white truncate pr-4">
+                            {job.source_url || `Uploaded File: ${job.id}`}
+                          </h3>
+                          
+                          {job.error ? (
+                            <p className="text-sm text-red-400 flex items-center gap-1.5">
+                              <AlertCircle size={14} />
+                              {job.error}
+                            </p>
+                          ) : (
+                             <p className="text-sm text-slate-400 font-mono">ID: {job.id}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress Section */}
+                    <div className="w-full md:w-64 shrink-0 flex flex-col justify-center">
+                       {job.status === 'processing' ? (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-medium uppercase tracking-wide">
+                            <span className="text-emerald-400 animate-pulse">{job.step.replace('_', ' ')}</span>
+                            <span className="text-white">{job.progress}%</span>
+                          </div>
+                          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-emerald-600 to-teal-400 transition-all duration-500 relative"
                               style={{ width: `${job.progress}%` }}
-                            ></div>
+                            >
+                                <div className="absolute inset-0 bg-white/20 animate-[shimmer_1.5s_infinite]" />
+                            </div>
                           </div>
                         </div>
-                      )}
+                       ) : job.status === 'ready' ? (
+                         <div className="flex items-center justify-end gap-2 text-emerald-400 text-sm font-medium">
+                            <span>View Clips</span>
+                            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                <ChevronRight size={16} />
+                            </div>
+                         </div>
+                       ) : (
+                         <div className="flex justify-end">
+                            <button className="text-xs text-slate-500 hover:text-white underline underline-offset-4">
+                                Retry Job
+                            </button>
+                         </div>
+                       )}
                     </div>
+
                   </div>
-                </Link>
+                </a>
               ))}
             </div>
           )}
