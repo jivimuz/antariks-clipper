@@ -26,6 +26,7 @@ from config import RAW_DIR
 from services.cloud import upload_file_to_s3
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
+from services.license import activate_license, get_license_status, check_license_valid
 
 # Setup logging
 logging.basicConfig(
@@ -59,6 +60,93 @@ def health_check():
         "version": "1.0.0"
     }
 
+
+# ==================== LICENSE ENDPOINTS ====================
+
+class LicenseActivateRequest(BaseModel):
+    license_key: str
+
+@app.post("/api/license/activate")
+def license_activate(payload: LicenseActivateRequest):
+    """
+    Activate a license key.
+    Validates with server and saves if valid.
+    """
+    try:
+        result = activate_license(payload.license_key)
+        if result.get("success"):
+            logger.info(f"License activated for {result.get('owner')}")
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Invalid license key"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"License activation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/license/status")
+def license_status():
+    """
+    Get current license status.
+    Returns activation status and validity.
+    """
+    try:
+        status = get_license_status()
+        return status
+    except Exception as e:
+        logger.error(f"License status check error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# License middleware - checks license on protected endpoints
+@app.middleware("http")
+async def license_middleware(request: Request, call_next):
+    """
+    Middleware to check license validity for all API endpoints.
+    Excludes license endpoints and health check.
+    """
+    # Skip license check for these paths
+    excluded_paths = [
+        "/health",
+        "/api/license/activate",
+        "/api/license/status",
+        "/docs",
+        "/redoc",
+        "/openapi.json"
+    ]
+    
+    # Check if path should be protected
+    if request.url.path not in excluded_paths and request.url.path.startswith("/api/"):
+        try:
+            status = get_license_status()
+            
+            if not status.get("activated"):
+                return Response(
+                    content=json.dumps({"detail": "License not activated"}),
+                    status_code=401,
+                    media_type="application/json"
+                )
+            
+            if not status.get("valid", False):
+                return Response(
+                    content=json.dumps({
+                        "detail": status.get("error", "License is not valid")
+                    }),
+                    status_code=403,
+                    media_type="application/json"
+                )
+        except Exception as e:
+            logger.error(f"License middleware error: {e}")
+            return Response(
+                content=json.dumps({"detail": "License validation error"}),
+                status_code=500,
+                media_type="application/json"
+            )
+    
+    response = await call_next(request)
+    return response
 
 
 # Password reset request and reset endpoints
