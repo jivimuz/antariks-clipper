@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { config } from '@/lib/config';
 
 export default function Home() {
   const router = useRouter();
@@ -10,6 +11,9 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Maximum file size: 5GB
+  const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +30,12 @@ export default function Home() {
           setLoading(false);
           return;
         }
+        // Validate YouTube URL format
+        if (!youtubeUrl.match(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/).+/)) {
+          setError('Please enter a valid YouTube URL');
+          setLoading(false);
+          return;
+        }
         formData.append('youtube_url', youtubeUrl);
       } else {
         if (!file) {
@@ -33,22 +43,30 @@ export default function Home() {
           setLoading(false);
           return;
         }
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
+          setError(`File size exceeds maximum limit of ${Math.round(MAX_FILE_SIZE / (1024 * 1024 * 1024))}GB`);
+          setLoading(false);
+          return;
+        }
         formData.append('file', file);
       }
 
-      const response = await fetch('http://localhost:8000/api/jobs', {
+      const response = await fetch(`${config.apiUrl}/api/jobs`, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create job');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to create job');
       }
 
       const data = await response.json();
       router.push(`/jobs/${data.job_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(errorMessage);
       setLoading(false);
     }
   };

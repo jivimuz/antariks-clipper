@@ -1,9 +1,12 @@
 """SQLite database module - manual queries without ORM"""
 import sqlite3
 import json
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from config import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 def get_connection():
     """Get database connection"""
@@ -72,17 +75,23 @@ def init_db():
 def create_job(job_id: str, source_type: str, source_url: Optional[str] = None) -> Dict[str, Any]:
     """Create a new job"""
     conn = get_connection()
-    cursor = conn.cursor()
-    now = datetime.utcnow().isoformat()
-    
-    cursor.execute("""
-        INSERT INTO jobs (id, source_type, source_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (job_id, source_type, source_url, now, now))
-    
-    conn.commit()
-    conn.close()
-    return get_job(job_id)
+    try:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        
+        cursor.execute("""
+            INSERT INTO jobs (id, source_type, source_url, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (job_id, source_type, source_url, now, now))
+        
+        conn.commit()
+        return get_job(job_id)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to create job {job_id}: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Get job by ID"""
@@ -105,15 +114,21 @@ def get_all_jobs(limit: int = 100) -> List[Dict[str, Any]]:
 def update_job(job_id: str, **kwargs):
     """Update job fields"""
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    kwargs['updated_at'] = datetime.utcnow().isoformat()
-    fields = ', '.join([f"{k} = ?" for k in kwargs.keys()])
-    values = list(kwargs.values()) + [job_id]
-    
-    cursor.execute(f"UPDATE jobs SET {fields} WHERE id = ?", values)
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        kwargs['updated_at'] = datetime.utcnow().isoformat()
+        fields = ', '.join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [job_id]
+        
+        cursor.execute(f"UPDATE jobs SET {fields} WHERE id = ?", values)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to update job {job_id}: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
 
 # Clip operations
 def create_clip(clip_id: str, job_id: str, start_sec: float, end_sec: float, 
@@ -121,19 +136,25 @@ def create_clip(clip_id: str, job_id: str, start_sec: float, end_sec: float,
                 thumbnail_path: str = "") -> Dict[str, Any]:
     """Create a new clip"""
     conn = get_connection()
-    cursor = conn.cursor()
-    now = datetime.utcnow().isoformat()
-    
-    cursor.execute("""
-        INSERT INTO clips (id, job_id, start_sec, end_sec, score, title, 
-                          transcript_snippet, thumbnail_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (clip_id, job_id, start_sec, end_sec, score, title, transcript_snippet, 
-          thumbnail_path, now))
-    
-    conn.commit()
-    conn.close()
-    return get_clip(clip_id)
+    try:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        
+        cursor.execute("""
+            INSERT INTO clips (id, job_id, start_sec, end_sec, score, title, 
+                              transcript_snippet, thumbnail_path, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (clip_id, job_id, start_sec, end_sec, score, title, transcript_snippet, 
+              thumbnail_path, now))
+        
+        conn.commit()
+        return get_clip(clip_id)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to create clip {clip_id}: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
 
 def get_clip(clip_id: str) -> Optional[Dict[str, Any]]:
     """Get clip by ID"""
@@ -157,17 +178,23 @@ def get_clips_by_job(job_id: str) -> List[Dict[str, Any]]:
 def create_render(render_id: str, clip_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new render"""
     conn = get_connection()
-    cursor = conn.cursor()
-    now = datetime.utcnow().isoformat()
-    
-    cursor.execute("""
-        INSERT INTO renders (id, clip_id, options_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (render_id, clip_id, json.dumps(options), now, now))
-    
-    conn.commit()
-    conn.close()
-    return get_render(render_id)
+    try:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        
+        cursor.execute("""
+            INSERT INTO renders (id, clip_id, options_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (render_id, clip_id, json.dumps(options), now, now))
+        
+        conn.commit()
+        return get_render(render_id)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to create render {render_id}: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
 
 def get_render(render_id: str) -> Optional[Dict[str, Any]]:
     """Get render by ID"""
@@ -186,12 +213,18 @@ def get_render(render_id: str) -> Optional[Dict[str, Any]]:
 def update_render(render_id: str, **kwargs):
     """Update render fields"""
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    kwargs['updated_at'] = datetime.utcnow().isoformat()
-    fields = ', '.join([f"{k} = ?" for k in kwargs.keys()])
-    values = list(kwargs.values()) + [render_id]
-    
-    cursor.execute(f"UPDATE renders SET {fields} WHERE id = ?", values)
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        kwargs['updated_at'] = datetime.utcnow().isoformat()
+        fields = ', '.join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [render_id]
+        
+        cursor.execute(f"UPDATE renders SET {fields} WHERE id = ?", values)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to update render {render_id}: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()

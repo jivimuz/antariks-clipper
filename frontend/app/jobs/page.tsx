@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { config } from '@/lib/config';
 
 interface Job {
   id: string;
@@ -17,6 +18,7 @@ interface Job {
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
 
   useEffect(() => {
     fetchJobs();
@@ -24,11 +26,17 @@ export default function JobsPage() {
 
   const fetchJobs = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/jobs');
+      const response = await fetch(`${config.apiUrl}/api/jobs`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch jobs');
+      }
       const data = await response.json();
       setJobs(data.jobs);
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error);
+      setError('');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load jobs';
+      setError(errorMessage);
+      console.error('Failed to fetch jobs:', err);
     } finally {
       setLoading(false);
     }
@@ -68,6 +76,21 @@ export default function JobsPage() {
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent"></div>
               <p className="mt-4 text-gray-600 dark:text-gray-400">Loading jobs...</p>
+            </div>
+          ) : error ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 text-center">
+              <div className="text-red-600 dark:text-red-400 mb-4">
+                <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p className="text-lg">{error}</p>
+              </div>
+              <button
+                onClick={fetchJobs}
+                className="px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg hover:bg-purple-600"
+              >
+                Retry
+              </button>
             </div>
           ) : jobs.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 text-center">

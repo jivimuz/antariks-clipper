@@ -14,6 +14,10 @@ RENDERS_DIR = DATA_DIR / "renders"
 # Database
 DB_PATH = DATA_DIR / "clipper.db"
 
+# CORS and API
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", str(5 * 1024 * 1024 * 1024)))  # 5GB default
+
 # Processing
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "2"))
 DEFAULT_CLIP_COUNT = int(os.getenv("DEFAULT_CLIP_COUNT", "12"))

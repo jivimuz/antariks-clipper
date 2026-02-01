@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import db
-from config import RAW_DIR
+from config import RAW_DIR, ALLOWED_ORIGINS, MAX_FILE_SIZE
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
 
@@ -26,13 +26,13 @@ db.init_db()
 # Create FastAPI app
 app = FastAPI(title="Antariks Clipper API", version="1.0.0")
 
-# CORS for local development
+# CORS configuration from environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # Models
@@ -67,6 +67,10 @@ async def create_job(
             if not youtube_url:
                 raise HTTPException(status_code=400, detail="youtube_url required")
             
+            # Validate YouTube URL format
+            if not youtube_url.startswith(('https://www.youtube.com', 'https://youtu.be', 'http://www.youtube.com', 'http://youtu.be')):
+                raise HTTPException(status_code=400, detail="Invalid YouTube URL format")
+            
             # Create job
             job = db.create_job(job_id, source_type="youtube", source_url=youtube_url)
             
@@ -79,11 +83,18 @@ async def create_job(
             if not file:
                 raise HTTPException(status_code=400, detail="file required")
             
+            # Check file size
+            content = await file.read()
+            if len(content) > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=413, 
+                    detail=f"File size exceeds maximum limit of {MAX_FILE_SIZE / (1024**3):.1f}GB"
+                )
+            
             # Save uploaded file
             file_ext = Path(file.filename).suffix if file.filename else ".mp4"
             raw_path = RAW_DIR / f"{job_id}_upload{file_ext}"
             
-            content = await file.read()
             raw_path.parent.mkdir(parents=True, exist_ok=True)
             with open(raw_path, "wb") as f:
                 f.write(content)
@@ -104,7 +115,7 @@ async def create_job(
         raise
     except Exception as e:
         logger.error(f"Create job error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/jobs")
 def list_jobs(limit: int = 100):
@@ -113,8 +124,8 @@ def list_jobs(limit: int = 100):
         jobs = db.get_all_jobs(limit=limit)
         return {"jobs": jobs}
     except Exception as e:
-        logger.error(f"List jobs error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"List jobs error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
@@ -127,8 +138,8 @@ def get_job(job_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get job error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get job error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/jobs/{job_id}/retry")
 def retry_job(job_id: str):
@@ -168,7 +179,7 @@ def retry_job(job_id: str):
         raise
     except Exception as e:
         logger.error(f"Retry job error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/jobs/{job_id}/clips")
 def get_job_clips(job_id: str):
@@ -183,8 +194,8 @@ def get_job_clips(job_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get clips error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get clips error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/clips/{clip_id}/render")
 def create_render(clip_id: str, options: RenderCreate):
@@ -212,7 +223,7 @@ def create_render(clip_id: str, options: RenderCreate):
         raise
     except Exception as e:
         logger.error(f"Create render error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/renders/{render_id}")
 def get_render(render_id: str):
@@ -225,8 +236,8 @@ def get_render(render_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get render error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get render error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/renders/{render_id}/retry")
 def retry_render(render_id: str):
@@ -263,7 +274,7 @@ def retry_render(render_id: str):
         raise
     except Exception as e:
         logger.error(f"Retry render error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/renders/{render_id}/download")
 def download_render(render_id: str):
@@ -289,8 +300,8 @@ def download_render(render_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Download render error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Download render error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/thumbnails/{clip_id}")
 def get_thumbnail(clip_id: str):
@@ -315,8 +326,8 @@ def get_thumbnail(clip_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get thumbnail error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Get thumbnail error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/clips/{clip_id}/preview")
 async def get_clip_preview(clip_id: str, face_tracking: bool = True):
@@ -385,7 +396,7 @@ async def get_clip_preview(clip_id: str, face_tracking: bool = True):
             except Exception:
                 pass
         logger.error(f"Preview error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/clips/{clip_id}/preview-frame")
@@ -428,7 +439,7 @@ async def get_clip_preview_frame(clip_id: str, face_tracking: bool = True):
         raise
     except Exception as e:
         logger.error(f"Preview frame error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/jobs/{job_id}/render-selected")
@@ -474,7 +485,7 @@ async def render_selected_clips(
         raise
     except Exception as e:
         logger.error(f"Batch render error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":
     import uvicorn

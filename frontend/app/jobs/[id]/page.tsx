@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { config } from '@/lib/config';
 
 interface Job {
   id: string;
@@ -43,28 +44,64 @@ export default function JobDetailPage() {
   const [captions, setCaptions] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [renders, setRenders] = useState<Record<string, Render>>({});
+  const [error, setError] = useState<string>('');
+  const [pollCount, setPollCount] = useState(0);
 
-  const API_URL = 'http://localhost:8000';
+  const MAX_POLL_COUNT = 360; // 12 minutes at 2 second intervals
 
   // Fetch job
   useEffect(() => {
+    let currentPollCount = 0;
+    
     const fetchJob = async () => {
-      const res = await fetch(`${API_URL}/api/jobs/${jobId}`);
-      const data = await res.json();
-      setJob(data);
+      try {
+        const res = await fetch(`${config.apiUrl}/api/jobs/${jobId}`);
+        if (!res.ok) {
+          throw new Error('Failed to fetch job');
+        }
+        const data = await res.json();
+        setJob(data);
+        setError('');
+        
+        // Reset poll count when job completes or fails
+        if (data.status === 'ready' || data.status === 'failed') {
+          currentPollCount = MAX_POLL_COUNT; // Stop polling
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load job';
+        setError(errorMessage);
+      }
     };
     
     fetchJob();
-    const interval = setInterval(fetchJob, 2000);
+    const interval = setInterval(() => {
+      currentPollCount++;
+      if (currentPollCount >= MAX_POLL_COUNT) {
+        clearInterval(interval);
+        setError('Job processing timeout - please refresh the page');
+      } else {
+        fetchJob();
+      }
+    }, 2000);
+    
     return () => clearInterval(interval);
   }, [jobId]);
 
   // Fetch clips when job is ready
   useEffect(() => {
     if (job?.status === 'ready') {
-      fetch(`${API_URL}/api/jobs/${jobId}/clips`)
-        .then(res => res.json())
-        .then(data => setClips(data.clips || []));
+      fetch(`${config.apiUrl}/api/jobs/${jobId}/clips`)
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch clips');
+          return res.json();
+        })
+        .then(data => {
+          setClips(data.clips || []);
+          setError('');
+        })
+        .catch(err => {
+          setError(err instanceof Error ? err.message : 'Failed to load clips');
+        });
     }
   }, [job?.status, jobId]);
 
@@ -92,8 +129,9 @@ export default function JobDetailPage() {
     if (selectedClips.size === 0) return;
     
     setRendering(true);
+    setError('');
     try {
-      const res = await fetch(`${API_URL}/api/jobs/${jobId}/render-selected?${new URLSearchParams({
+      const res = await fetch(`${config.apiUrl}/api/jobs/${jobId}/render-selected?${new URLSearchParams({
         clip_ids: Array.from(selectedClips).join(',')
       })}`, {
         method: 'POST',
@@ -103,26 +141,53 @@ export default function JobDetailPage() {
           captions: captions
         })
       });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to start render');
+      }
+      
       const data = await res.json();
       
       // Poll render status
       for (const renderId of data.render_ids) {
         pollRenderStatus(renderId);
       }
-    } catch (error) {
-      console.error('Render error:', error);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Render failed';
+      setError(errorMessage);
+      console.error('Render error:', err);
+    } finally {
+      setRendering(false);
     }
-    setRendering(false);
   };
 
   const pollRenderStatus = async (renderId: string) => {
+    let pollAttempts = 0;
+    const maxPollAttempts = 300; // 10 minutes at 2 second intervals
+    
     const poll = async () => {
-      const res = await fetch(`${API_URL}/api/renders/${renderId}`);
-      const render = await res.json();
-      setRenders(prev => ({ ...prev, [renderId]: render }));
-      
-      if (render.status !== 'ready' && render.status !== 'failed') {
-        setTimeout(poll, 2000);
+      try {
+        const res = await fetch(`${config.apiUrl}/api/renders/${renderId}`);
+        if (!res.ok) {
+          throw new Error('Failed to fetch render status');
+        }
+        const render = await res.json();
+        setRenders(prev => ({ ...prev, [renderId]: render }));
+        
+        if (render.status !== 'ready' && render.status !== 'failed') {
+          pollAttempts++;
+          if (pollAttempts < maxPollAttempts) {
+            setTimeout(poll, 2000);
+          } else {
+            setRenders(prev => ({ 
+              ...prev, 
+              [renderId]: { ...render, status: 'failed', error: 'Render timeout' } 
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Poll render error:', err);
       }
     };
     poll();
@@ -170,6 +235,12 @@ export default function JobDetailPage() {
         {job.error && (
           <div className="bg-red-900/50 text-red-300 p-3 rounded mt-4">
             Error: {job.error}
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-900/50 text-red-300 p-3 rounded mt-4">
+            {error}
           </div>
         )}
       </div>
