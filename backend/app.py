@@ -459,10 +459,27 @@ async def render_selected_clips(
         # Parse comma-separated clip IDs
         clip_id_list = [cid.strip() for cid in clip_ids.split(',') if cid.strip()]
         
+        if not clip_id_list:
+            raise HTTPException(status_code=400, detail="No clip IDs provided")
+        
+        # Validate UUID format for each clip_id
+        import re
+        uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+        invalid_ids = [cid for cid in clip_id_list if not uuid_pattern.match(cid)]
+        if invalid_ids:
+            raise HTTPException(status_code=400, detail=f"Invalid clip ID format: {', '.join(invalid_ids[:3])}")
+        
         render_ids = []
+        not_found_clips = []
+        
         for clip_id in clip_id_list:
             clip = db.get_clip(clip_id)
-            if not clip or clip['job_id'] != job_id:
+            if not clip:
+                not_found_clips.append(clip_id)
+                continue
+            
+            if clip['job_id'] != job_id:
+                logger.warning(f"Clip {clip_id} does not belong to job {job_id}")
                 continue
             
             render_id = str(uuid.uuid4())
@@ -473,6 +490,12 @@ async def render_selected_clips(
             )
             submit_render(render_id)
             render_ids.append(render_id)
+        
+        if not_found_clips:
+            logger.warning(f"Clips not found: {', '.join(not_found_clips)}")
+        
+        if not render_ids:
+            raise HTTPException(status_code=404, detail="No valid clips found to render")
         
         return {
             "job_id": job_id,

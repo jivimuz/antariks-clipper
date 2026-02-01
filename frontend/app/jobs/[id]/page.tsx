@@ -325,7 +325,7 @@ export default function JobDetailPage() {
                     style={{ aspectRatio: '9/16' }}
                   >
                     <source
-                      src={`${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
+                      src={`${config.apiUrl}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
                       type="video/mp4"
                     />
                   </video>
@@ -399,7 +399,7 @@ export default function JobDetailPage() {
                         
                         <button
                           onClick={async () => {
-                            const res = await fetch(`${API_URL}/api/clips/${clip.id}/render`, {
+                            const res = await fetch(`${config.apiUrl}/api/clips/${clip.id}/render`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ face_tracking: faceTracking, captions })
@@ -465,7 +465,7 @@ export default function JobDetailPage() {
                   onClick={() => setPreviewClipId(clip.id)}
                 >
                   <img
-                    src={`${API_URL}/api/clips/${clip.id}/preview-frame?face_tracking=${faceTracking}`}
+                    src={`${config.apiUrl}/api/clips/${clip.id}/preview-frame?face_tracking=${faceTracking}`}
                     alt={clip.title}
                     className="w-full h-full object-cover"
                   />

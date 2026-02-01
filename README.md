@@ -45,6 +45,10 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# (Optional) Configure environment variables
+# Copy .env.example to .env and adjust settings
+cp .env.example .env
+
 # Run server
 uvicorn app:app --reload --port 8000
 ```
@@ -58,6 +62,10 @@ cd frontend
 
 # Install dependencies
 npm install
+
+# (Optional) Configure environment variables
+# Copy .env.local.example to .env.local if you need custom API URL
+cp .env.local.example .env.local
 
 # Run development server
 npm run dev
@@ -152,6 +160,27 @@ Frontend will be available at http://localhost:3000
 6. **Render**: Create vertical 9:16 output with optional:
    - Face tracking (active speaker detection)
    - Captions (burned-in subtitles)
+
+## Configuration
+
+### Backend Environment Variables
+
+The backend supports configuration via environment variables. Copy `.env.example` to `.env` to customize:
+
+- `MAX_WORKERS` - Number of concurrent processing workers (default: 2)
+- `DEFAULT_CLIP_COUNT` - Number of highlight clips to generate (default: 12)
+- `MIN_CLIP_DURATION` - Minimum clip length in seconds (default: 15)
+- `MAX_CLIP_DURATION` - Maximum clip length in seconds (default: 60)
+- `IDEAL_CLIP_DURATION` - Target clip length in seconds (default: 35)
+- `WHISPER_MODEL` - Whisper model size: base, small, medium, large (default: base)
+- `ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins (default: http://localhost:3000,http://127.0.0.1:3000)
+- `MAX_FILE_SIZE` - Maximum upload file size in bytes (default: 5GB)
+
+### Frontend Environment Variables
+
+The frontend supports configuration via environment variables. Copy `.env.local.example` to `.env.local` to customize:
+
+- `NEXT_PUBLIC_API_URL` - Backend API URL (default: http://localhost:8000)
 
 ## Notes
 
