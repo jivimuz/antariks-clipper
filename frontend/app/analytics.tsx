@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/analytics")
+    fetch(getApiEndpoint("/api/analytics"))
       .then((res) => res.json())
       .then((d) => setData(d))
       .finally(() => setLoading(false));

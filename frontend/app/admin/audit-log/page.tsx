@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AdminAuditLogPage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -9,7 +10,7 @@ export default function AdminAuditLogPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("http://localhost:8000/api/admin/audit-logs")
+    fetch(getApiEndpoint("/api/admin/audit-logs"))
       .then(r => r.json())
       .then(data => { setLogs(data.logs || []); toast.success("Audit logs loaded!"); })
       .catch(() => { setError("Failed to load audit logs"); toast.error("Failed to load audit logs"); })

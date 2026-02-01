@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -10,7 +11,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("http://localhost:8000/api/admin/users")
+    fetch(getApiEndpoint("/api/admin/users"))
       .then(r => r.json())
       .then(data => { setUsers(data.users || []); toast.success("Users loaded!"); })
       .catch(() => { setError("Failed to load users"); toast.error("Failed to load users"); })

@@ -49,6 +49,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    """Health check endpoint to verify API is running"""
+    return {
+        "status": "healthy",
+        "service": "Antariks Clipper API",
+        "version": "1.0.0"
+    }
+
 
 
 # Password reset request and reset endpoints
@@ -62,9 +72,28 @@ class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
 
+class PaymentSessionRequest(BaseModel):
+    plan: str
+    email: str
 
 # Payment: Create Stripe Checkout session
 @app.post("/api/payment/create-session")
+def create_payment_session(payload: PaymentSessionRequest):
+    """Create a Stripe checkout session for license purchase"""
+    try:
+        # This is a placeholder - configure with real Stripe credentials
+        # stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+        logger.info(f"Payment session requested for {payload.email} - plan: {payload.plan}")
+        
+        # For demo purposes, return a mock session
+        return {
+            "session_id": f"mock_session_{secrets.token_hex(16)}",
+            "url": "https://checkout.stripe.com/demo",
+            "message": "Payment integration requires Stripe configuration"
+        }
+    except Exception as e:
+        logger.error(f"Payment session creation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Admin: List all users endpoint
 @app.get("/api/admin/users")

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2 } from 'lucide-react';
+import { getApiEndpoint } from '@/lib/api';
+import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 
 function useIsLoggedIn() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -30,16 +32,20 @@ export default function Home() {
     setError('');
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('source_type', sourceType);
+      // Validate inputs
       if (sourceType === 'youtube') {
         if (!youtubeUrl) {
-          setError('Please enter a valid YouTube URL');
-          toast.error('Please enter a valid YouTube URL');
+          setError('Please enter a YouTube URL');
+          toast.error('Please enter a YouTube URL');
           setLoading(false);
           return;
         }
-        formData.append('youtube_url', youtubeUrl);
+        if (!isValidYouTubeUrl(youtubeUrl)) {
+          setError('Please enter a valid YouTube URL (e.g., https://www.youtube.com/watch?v=...)');
+          toast.error('Invalid YouTube URL format');
+          setLoading(false);
+          return;
+        }
       } else {
         if (!file) {
           setError('Please select a video file to upload');
@@ -47,7 +53,22 @@ export default function Home() {
           setLoading(false);
           return;
         }
-        formData.append('file', file);
+        const validation = validateVideoFile(file);
+        if (!validation.isValid) {
+          setError(validation.error || 'Invalid video file');
+          toast.error(validation.error || 'Invalid video file');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('source_type', sourceType);
+      if (sourceType === 'youtube') {
+        formData.append('youtube_url', youtubeUrl);
+      } else {
+        // TypeScript now knows file is not null due to the check above
+        formData.append('file', file!);
       }
       // --- SaaS: Require license key ---
       const licenseKey = typeof window !== 'undefined' ? localStorage.getItem('license_key') : null;
@@ -58,7 +79,7 @@ export default function Home() {
         return;
       }
       // Real API call
-      const response = await fetch('http://localhost:8000/api/jobs', {
+      const response = await fetch(getApiEndpoint('/api/jobs'), {
         method: 'POST',
         body: formData,
         headers: {

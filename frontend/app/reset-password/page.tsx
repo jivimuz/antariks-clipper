@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function ResetPasswordPage() {
   const [step, setStep] = useState<"request" | "confirm">("request");
@@ -17,7 +18,7 @@ export default function ResetPasswordPage() {
     setError("");
     setMessage("");
     try {
-      const res = await fetch("http://localhost:8000/api/password-reset/request", {
+      const res = await fetch(getApiEndpoint("/api/password-reset/request"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
@@ -41,7 +42,7 @@ export default function ResetPasswordPage() {
     setError("");
     setMessage("");
     try {
-      const res = await fetch("http://localhost:8000/api/password-reset/confirm", {
+      const res = await fetch(getApiEndpoint("/api/password-reset/confirm"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, new_password: newPassword })

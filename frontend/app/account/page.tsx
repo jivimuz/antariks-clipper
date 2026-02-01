@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getApiEndpoint } from "@/lib/api";
 
 export default function AccountPage() {
   const [email, setEmail] = useState("");
@@ -21,7 +22,7 @@ export default function AccountPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`http://localhost:8000/api/user/licenses?email=${encodeURIComponent(email)}`);
+      const res = await fetch(getApiEndpoint(`/api/user/licenses?email=${encodeURIComponent(email)}`));
       if (!res.ok) throw new Error("Failed to fetch licenses");
       const data = await res.json();
       setLicenses(data);
@@ -42,7 +43,7 @@ export default function AccountPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/license/validate", {
+      const res = await fetch(getApiEndpoint("/api/license/validate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: licenseKey })
