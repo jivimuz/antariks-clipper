@@ -9,8 +9,6 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Optional, List, Dict
 
-import stripe
-
 import db
 from db import log_action
 
@@ -165,29 +163,6 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
-
-class PaymentSessionRequest(BaseModel):
-    plan: str
-    email: str
-
-# Payment: Create Stripe Checkout session
-@app.post("/api/payment/create-session")
-def create_payment_session(payload: PaymentSessionRequest):
-    """Create a Stripe checkout session for license purchase"""
-    try:
-        # This is a placeholder - configure with real Stripe credentials
-        # stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-        logger.info(f"Payment session requested for {payload.email} - plan: {payload.plan}")
-        
-        # For demo purposes, return a mock session
-        return {
-            "session_id": f"mock_session_{secrets.token_hex(16)}",
-            "url": "https://checkout.stripe.com/demo",
-            "message": "Payment integration requires Stripe configuration"
-        }
-    except Exception as e:
-        logger.error(f"Payment session creation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Admin: List all users endpoint
 @app.get("/api/admin/users")
@@ -449,23 +424,6 @@ def get_analytics():
 @app.get("/api/admin/audit-logs")
 def admin_audit_logs():
     return {"logs": get_audit_logs()}
-
-# Stripe webhook for payment events (automatic license activation)
-@app.post("/api/payment/webhook")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-    endpoint_secret = "whsec_REPLACE_WITH_YOUR_SECRET"
-    event = None
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
-        # ...existing code...
-    except Exception as e:
-        print(f"Webhook error: {e}")
-        return {"error": str(e)}
-    # ...existing code...
 
 # Models
 class YouTubeJobCreate(BaseModel):

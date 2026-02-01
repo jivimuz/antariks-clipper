@@ -1,60 +1,23 @@
-# Payment Integration Plan for SaaS Licensing
+# Payment Integration
 
-This document outlines how to integrate a real payment provider (e.g., Stripe) for license purchase and automation in your SaaS video clipping app.
+## External Payment Processing
 
-## 1. Choose a Payment Provider
+Payments for Antariks Clipper licenses are processed on a separate Antariks website (https://antariks.id).
 
-- Recommended: Stripe (easy API, good docs, supports subscriptions)
-- Alternatives: Midtrans, Xendit, PayPal, Doku, etc.
+## License Activation Flow
 
-## 2. Backend Integration (Python/FastAPI)
+1. User purchases a license on the Antariks website
+2. Payment is processed externally
+3. User receives a license key via email or on the purchase confirmation page
+4. User activates the license in the Antariks Clipper application using the `/license` activation page
 
-- Install Stripe SDK: `pip install stripe`
-- Add endpoint to create Stripe Checkout session:
+## License Management
 
-```python
-import stripe
-stripe.api_key = "sk_test_..."  # Use your real secret key
+The application uses a license validation system that:
+- Validates license keys against the Antariks license server
+- Requires license activation before application usage
+- Caches license validation for 24 hours
+- Binds licenses to device MAC addresses for security
 
-@app.post("/api/payment/create-session")
-def create_payment_session(data: dict):
-    email = data.get("email")
-    plan = data.get("plan")
-    # Map plan to Stripe price ID
-    price_id = {
-        "basic": "price_abc123",
-        "pro": "price_def456",
-        "enterprise": "price_xyz789"
-    }[plan]
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        customer_email=email,
-        line_items=[{"price": price_id, "quantity": 1}],
-        mode="subscription",
-        success_url="https://yourdomain.com/payment/success",
-        cancel_url="https://yourdomain.com/payment/cancel"
-    )
-    return {"checkout_url": session.url}
-```
+See the license activation page at `/license` in the application for more details.
 
-- Add webhook endpoint to listen for successful payment and activate license.
-
-## 3. Frontend Integration (Next.js)
-
-- On payment form submit, call `/api/payment/create-session`.
-- Redirect user to `checkout_url` from backend response.
-- On success, show confirmation and activate license for user.
-
-## 4. Automation
-
-- When webhook receives payment success, create/activate license in DB for the user.
-- Optionally, email the license key to the user.
-
-## 5. Security
-
-- Never expose your Stripe secret key to frontend.
-- Use webhooks to automate license activation.
-
----
-
-You can now proceed to implement this plan. Let me know if you want to generate the backend Stripe integration code or set up the webhook handler!
