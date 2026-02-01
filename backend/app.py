@@ -43,7 +43,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Accept", "Authorization"],
 )
 
 # Models
@@ -94,12 +94,21 @@ async def create_job(
             if not file:
                 raise HTTPException(status_code=400, detail="file required")
             
-            # Check file size
+            # Validate file has content
+            if not file.filename:
+                raise HTTPException(status_code=400, detail="Invalid file")
+            
+            # Read and check file size
             content = await file.read()
-            if len(content) > MAX_FILE_SIZE:
+            file_size = len(content)
+            
+            if file_size == 0:
+                raise HTTPException(status_code=400, detail="Empty file")
+            
+            if file_size > MAX_FILE_SIZE:
                 raise HTTPException(
                     status_code=413, 
-                    detail=f"File size exceeds maximum limit of {MAX_FILE_SIZE / (1024**3):.1f}GB"
+                    detail=f"File size ({file_size / (1024**3):.1f}GB) exceeds maximum limit of {MAX_FILE_SIZE / (1024**3):.1f}GB"
                 )
             
             # Save uploaded file

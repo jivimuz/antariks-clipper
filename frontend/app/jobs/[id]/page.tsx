@@ -32,6 +32,13 @@ interface Render {
   error?: string;
 }
 
+// Polling configuration constants
+const POLL_INTERVAL_MS = 2000;
+const MAX_JOB_POLL_TIME_MS = 12 * 60 * 1000; // 12 minutes
+const MAX_RENDER_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_JOB_POLL_COUNT = Math.floor(MAX_JOB_POLL_TIME_MS / POLL_INTERVAL_MS);
+const MAX_RENDER_POLL_COUNT = Math.floor(MAX_RENDER_POLL_TIME_MS / POLL_INTERVAL_MS);
+
 export default function JobDetailPage() {
   const params = useParams();
   const jobId = params.id as string;
@@ -45,13 +52,6 @@ export default function JobDetailPage() {
   const [rendering, setRendering] = useState(false);
   const [renders, setRenders] = useState<Record<string, Render>>({});
   const [error, setError] = useState<string>('');
-
-  // Polling configuration
-  const POLL_INTERVAL_MS = 2000;
-  const MAX_JOB_POLL_TIME_MS = 12 * 60 * 1000; // 12 minutes
-  const MAX_RENDER_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
-  const MAX_JOB_POLL_COUNT = MAX_JOB_POLL_TIME_MS / POLL_INTERVAL_MS;
-  const MAX_RENDER_POLL_COUNT = MAX_RENDER_POLL_TIME_MS / POLL_INTERVAL_MS;
 
   // Fetch job
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function JobDetailPage() {
     }, POLL_INTERVAL_MS);
     
     return () => clearInterval(intervalId);
-  }, [jobId, POLL_INTERVAL_MS, MAX_JOB_POLL_COUNT]);
+  }, [jobId]);
 
   // Fetch clips when job is ready
   useEffect(() => {
