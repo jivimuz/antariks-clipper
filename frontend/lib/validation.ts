@@ -10,12 +10,12 @@
 export function isValidYouTubeUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
   
-  // YouTube URL patterns
+  // YouTube URL patterns - allow additional query parameters
   const patterns = [
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:&.*)?$/,
+    /^(https?:\/\/)?(www\.)?(youtu\.be\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/,
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/,
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/v\/)([a-zA-Z0-9_-]{11})(?:\?.*)?$/,
   ];
   
   return patterns.some(pattern => pattern.test(url));
@@ -62,6 +62,11 @@ export function validateVideoFile(
  * @returns Formatted string (e.g., "15.5 MB")
  */
 export function formatFileSize(bytes: number): string {
+  // Handle invalid inputs
+  if (typeof bytes !== 'number' || bytes < 0 || !isFinite(bytes)) {
+    return '0 Bytes';
+  }
+  
   if (bytes === 0) return '0 Bytes';
   
   const k = 1024;

@@ -47,6 +47,12 @@ export default function Home() {
           return;
         }
       } else {
+        if (!file) {
+          setError('Please select a video file to upload');
+          toast.error('Please select a video file to upload');
+          setLoading(false);
+          return;
+        }
         const validation = validateVideoFile(file);
         if (!validation.isValid) {
           setError(validation.error || 'Invalid video file');
@@ -61,6 +67,7 @@ export default function Home() {
       if (sourceType === 'youtube') {
         formData.append('youtube_url', youtubeUrl);
       } else {
+        // TypeScript now knows file is not null due to the check above
         formData.append('file', file!);
       }
       // --- SaaS: Require license key ---
