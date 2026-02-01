@@ -10,6 +10,7 @@ import {
   ScanFace, Share2, MoreVertical, Loader2, Youtube, FileVideo,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { getApiUrl, getApiEndpoint } from '../../lib/api';
 
 interface Job {
   id: string;
@@ -48,7 +49,7 @@ interface NewClip {
 
 
 export default function JobDetailPage() {
-  const API_URL = 'http://localhost:8000';
+  const API_URL = getApiUrl();
   const params = useParams();
   const jobId = params.id as string;
   

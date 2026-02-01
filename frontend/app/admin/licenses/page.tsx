@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { getApiEndpoint } from "../../lib/api";
 
 export default function AdminLicensesPage() {
   const [licenses, setLicenses] = useState<any[]>([]);
@@ -12,7 +13,7 @@ export default function AdminLicensesPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("http://localhost:8000/api/admin/licenses")
+    fetch(getApiEndpoint("/api/admin/licenses"))
       .then(r => r.json())
       .then(data => { setLicenses(data.licenses || []); toast.success("Licenses loaded!"); })
       .catch(() => { setError("Failed to load licenses"); toast.error("Failed to load licenses"); })
@@ -24,7 +25,7 @@ export default function AdminLicensesPage() {
     setCreating(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:8000/api/admin/create-license", {
+      const res = await fetch(getApiEndpoint("/api/admin/create-license"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
@@ -42,7 +43,7 @@ export default function AdminLicensesPage() {
   };
 
   const handleStatus = async (id: string, active: boolean) => {
-    await fetch("http://localhost:8000/api/admin/set-license-status", {
+    await fetch(getApiEndpoint("/api/admin/set-license-status"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ license_id: id, active })

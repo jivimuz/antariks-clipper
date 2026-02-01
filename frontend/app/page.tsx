@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2 } from 'lucide-react';
+import { getApiEndpoint } from '../lib/api';
+import { isValidYouTubeUrl, validateVideoFile } from '../lib/validation';
 
 function useIsLoggedIn() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -30,24 +32,36 @@ export default function Home() {
     setError('');
     setLoading(true);
     try {
+      // Validate inputs
+      if (sourceType === 'youtube') {
+        if (!youtubeUrl) {
+          setError('Please enter a YouTube URL');
+          toast.error('Please enter a YouTube URL');
+          setLoading(false);
+          return;
+        }
+        if (!isValidYouTubeUrl(youtubeUrl)) {
+          setError('Please enter a valid YouTube URL (e.g., https://www.youtube.com/watch?v=...)');
+          toast.error('Invalid YouTube URL format');
+          setLoading(false);
+          return;
+        }
+      } else {
+        const validation = validateVideoFile(file);
+        if (!validation.isValid) {
+          setError(validation.error || 'Invalid video file');
+          toast.error(validation.error || 'Invalid video file');
+          setLoading(false);
+          return;
+        }
+      }
+
       const formData = new FormData();
       formData.append('source_type', sourceType);
       if (sourceType === 'youtube') {
-        if (!youtubeUrl) {
-          setError('Please enter a valid YouTube URL');
-          toast.error('Please enter a valid YouTube URL');
-          setLoading(false);
-          return;
-        }
         formData.append('youtube_url', youtubeUrl);
       } else {
-        if (!file) {
-          setError('Please select a video file to upload');
-          toast.error('Please select a video file to upload');
-          setLoading(false);
-          return;
-        }
-        formData.append('file', file);
+        formData.append('file', file!);
       }
       // --- SaaS: Require license key ---
       const licenseKey = typeof window !== 'undefined' ? localStorage.getItem('license_key') : null;
@@ -58,7 +72,7 @@ export default function Home() {
         return;
       }
       // Real API call
-      const response = await fetch('http://localhost:8000/api/jobs', {
+      const response = await fetch(getApiEndpoint('/api/jobs'), {
         method: 'POST',
         body: formData,
         headers: {

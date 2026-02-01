@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar } from 'lucide-react';
 import toast from "react-hot-toast";
+import { getApiEndpoint } from '../lib/api';
 
 interface Job {
   id: string;
@@ -27,7 +28,7 @@ export default function JobsPage() {
 
   const fetchJobs = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/jobs');
+      const response = await fetch(getApiEndpoint('/api/jobs'));
       const data = await response.json();
       setJobs(data.jobs);
       toast.success("Jobs loaded!");
