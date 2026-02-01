@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { getApiEndpoint } from "@/lib/api";
 import { Key, Loader2, CheckCircle2, AlertCircle, Shield } from "lucide-react";
+import { LicenseStatus, LicenseActivationResponse } from "@/types/license";
 
 export default function LicensePage() {
   const [licenseKey, setLicenseKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [error, setError] = useState("");
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
   const router = useRouter();
 
   // Check license status on mount
@@ -55,7 +56,7 @@ export default function LicensePage() {
         body: JSON.stringify({ license_key: licenseKey })
       });
       
-      const data = await res.json();
+      const data: LicenseActivationResponse = await res.json();
       
       if (!res.ok) {
         throw new Error(data.detail || data.error || "Invalid license key");

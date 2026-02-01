@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { getApiEndpoint } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import { LicenseStatus } from "@/types/license";
 
 export default function LicenseGuard({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
@@ -10,21 +11,10 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
   const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    // Skip check for license page itself
-    if (pathname === "/license") {
-      setChecking(false);
-      setLicenseValid(true);
-      return;
-    }
-
-    checkLicense();
-  }, [pathname, router]);
-
-  const checkLicense = async () => {
+  const checkLicense = useCallback(async () => {
     try {
       const res = await fetch(getApiEndpoint("/api/license/status"));
-      const data = await res.json();
+      const data: LicenseStatus = await res.json();
 
       if (!data.activated || !data.valid) {
         // Redirect to license page if not activated or invalid
@@ -40,7 +30,18 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
     } finally {
       setChecking(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    // Skip check for license page itself
+    if (pathname === "/license") {
+      setChecking(false);
+      setLicenseValid(true);
+      return;
+    }
+
+    checkLicense();
+  }, [pathname, checkLicense]);
 
   if (checking) {
     return (

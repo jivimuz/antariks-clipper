@@ -107,6 +107,9 @@ async def license_middleware(request: Request, call_next):
     Middleware to check license validity for all API endpoints.
     Excludes license endpoints and health check.
     """
+    # Normalize path by removing trailing slash and query params
+    path = request.url.path.rstrip('/')
+    
     # Skip license check for these paths
     excluded_paths = [
         "/health",
@@ -117,8 +120,11 @@ async def license_middleware(request: Request, call_next):
         "/openapi.json"
     ]
     
-    # Check if path should be protected
-    if request.url.path not in excluded_paths and request.url.path.startswith("/api/"):
+    # Check if path should be protected (starts with /api/ and not in excluded list)
+    is_api_path = path.startswith("/api")
+    is_excluded = path in excluded_paths or any(path.startswith(excluded) for excluded in excluded_paths)
+    
+    if is_api_path and not is_excluded:
         try:
             status = get_license_status()
             

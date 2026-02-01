@@ -17,6 +17,9 @@ LICENSE_DATA_PATH = Path(__file__).parent.parent / "data" / "license.json"
 # License validation URL (configurable via env)
 LICENSE_URL = os.getenv("LICENSE_URL", "https://management.antariks.id/api/license/validate")
 
+# License cache duration in hours (configurable via env)
+LICENSE_CACHE_HOURS = int(os.getenv("LICENSE_CACHE_HOURS", "24"))
+
 
 def _get_product_code() -> str:
     """
@@ -200,13 +203,13 @@ def get_license_status() -> Dict:
     if not license_data:
         return {"activated": False}
     
-    # Check if cache is expired (24 hours)
+    # Check if cache is expired (configurable hours)
     try:
         last_validated = datetime.fromisoformat(license_data.get("last_validated", ""))
         cache_age = datetime.now() - last_validated
         
-        # Re-validate if cache is older than 24 hours
-        if cache_age > timedelta(hours=24):
+        # Re-validate if cache is older than configured hours
+        if cache_age > timedelta(hours=LICENSE_CACHE_HOURS):
             logger.info("License cache expired, re-validating...")
             result = validate_license_with_server(license_data["license_key"])
             

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
+import { LicenseStatus } from '@/types/license';
 
 function useIsLoggedIn() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -18,7 +19,7 @@ function useIsLoggedIn() {
 }
 
 function useLicenseStatus() {
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
   useEffect(() => {
     fetch(getApiEndpoint('/api/license/status'))
       .then(res => res.json())
