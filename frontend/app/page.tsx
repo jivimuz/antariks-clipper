@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2 } from 'lucide-react';
+import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 
@@ -17,8 +17,20 @@ function useIsLoggedIn() {
   return isLoggedIn;
 }
 
+function useLicenseStatus() {
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  useEffect(() => {
+    fetch(getApiEndpoint('/api/license/status'))
+      .then(res => res.json())
+      .then(data => setLicenseStatus(data))
+      .catch(err => console.error('Failed to fetch license status:', err));
+  }, []);
+  return licenseStatus;
+}
+
 export default function Home() {
   const isLoggedIn = useIsLoggedIn();
+  const licenseStatus = useLicenseStatus();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sourceType, setSourceType] = useState<'youtube' | 'upload'>('youtube');
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -119,6 +131,23 @@ export default function Home() {
 
   return (
     <>
+      {/* License Status Badge - Top Left */}
+      {licenseStatus && licenseStatus.activated && licenseStatus.valid && (
+        <div className="fixed top-4 left-4 z-50 bg-slate-900/80 backdrop-blur-sm border border-emerald-500/30 rounded-xl px-3 py-2 shadow-lg">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-emerald-400" />
+            <div className="text-xs">
+              <div className="text-emerald-400 font-semibold">
+                Licensed to: {licenseStatus.owner}
+              </div>
+              <div className="text-slate-400">
+                Expires: {licenseStatus.expires}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed top-4 right-4 z-50 flex justify-end items-center">
         {isLoggedIn ? (
           <div className="relative flex gap-2">
