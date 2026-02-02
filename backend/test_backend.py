@@ -22,6 +22,11 @@ def test_syntax():
         'thumbnails',
         'jobs',
         'preview',
+        'speaker_detect',
+        'smart_crop',
+        'face_track',
+        'reframe',
+        'render',
     ]
     
     # Test core modules that don't require heavy dependencies
