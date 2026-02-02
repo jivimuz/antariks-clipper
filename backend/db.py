@@ -247,14 +247,18 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     conn.close()
     return dict(row) if row else None
 
-def get_all_jobs(limit: int = 100) -> List[Dict[str, Any]]:
-    """Get all jobs"""
+def get_all_jobs(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get all jobs with pagination"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+    cursor.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+def get_total_jobs_count() -> int:
+    """Get total count of jobs"""
+    return count_jobs()
 
 def update_job(job_id: str, **kwargs):
     """Update job fields"""
@@ -349,3 +353,49 @@ def update_render(render_id: str, **kwargs):
     cursor.execute(f"UPDATE renders SET {fields} WHERE id = ?", values)
     conn.commit()
     conn.close()
+
+# Delete operations
+def delete_job(job_id: str) -> bool:
+    """Delete a job and all associated clips and renders"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Delete all renders associated with clips of this job
+        cursor.execute("""
+            DELETE FROM renders 
+            WHERE clip_id IN (SELECT id FROM clips WHERE job_id = ?)
+        """, (job_id,))
+        
+        # Delete all clips associated with this job
+        cursor.execute("DELETE FROM clips WHERE job_id = ?", (job_id,))
+        
+        # Delete the job itself
+        cursor.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+def get_renders_by_job(job_id: str) -> List[Dict[str, Any]]:
+    """Get all renders for a job (via clips)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.* FROM renders r
+        INNER JOIN clips c ON r.clip_id = c.id
+        WHERE c.job_id = ?
+    """, (job_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        item = dict(row)
+        if item.get('options_json'):
+            item['options'] = json.loads(item['options_json'])
+        result.append(item)
+    return result
