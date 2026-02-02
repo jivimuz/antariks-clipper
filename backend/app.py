@@ -133,7 +133,7 @@ async def license_middleware(request: Request, call_next):
     if not should_skip and path.startswith("/api"):
         try:
             status = get_license_status()
-            logger.debug(f"License status for {path}: {status}")
+            logger.debug(f"License check for {path}: activated={status.get('activated')}, valid={status.get('valid')}")
             
             if not status.get("activated"):
                 return Response(
@@ -152,8 +152,11 @@ async def license_middleware(request: Request, call_next):
                 )
         except Exception as e:
             logger.error(f"License check error: {e}")
-            # Allow through on error to prevent blocking
-            pass
+            return Response(
+                content=json.dumps({"detail": "License validation error"}),
+                status_code=500,
+                media_type="application/json"
+            )
     
     response = await call_next(request)
     return response

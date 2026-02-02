@@ -121,7 +121,8 @@ async def validate_license(license_key: str | None = None) -> dict:
                     return {"valid": False, "error": "License expired"}
                 
                 # Save license if new
-                save_license(license_key, data.get("owner", ""), expires)
+                if not save_license(license_key, data.get("owner", ""), expires):
+                    logger.warning("License validated but failed to save to disk")
                 
                 return {
                     "valid": True,
