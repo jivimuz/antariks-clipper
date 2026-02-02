@@ -5,7 +5,7 @@ import os
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.license import _get_product_code, _get_mac_address
+from services.license import _get_product_code, get_mac_address
 
 def test_product_code_obfuscation():
     """Verify product code is properly obfuscated"""
@@ -39,7 +39,7 @@ def test_mac_address():
     """Test MAC address retrieval"""
     print("\nTesting MAC address retrieval...")
     
-    mac = _get_mac_address()
+    mac = get_mac_address()
     print(f"✓ MAC address: {mac}")
     
     # Basic validation
