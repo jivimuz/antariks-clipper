@@ -3,9 +3,12 @@ import os
 import json
 import uuid
 import httpx
+import logging
 from datetime import datetime, date
 from pathlib import Path
 from config import DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 # License storage path
 LICENSE_FILE = DATA_DIR / "license.json"
@@ -34,22 +37,37 @@ def get_mac_address() -> str:
 
 def load_license() -> dict | None:
     """Load saved license from storage"""
-    if LICENSE_FILE.exists():
-        with open(LICENSE_FILE, 'r') as f:
-            return json.load(f)
-    return None
+    try:
+        if LICENSE_FILE.exists():
+            logger.info(f"Loading license from {LICENSE_FILE}")
+            with open(LICENSE_FILE, 'r') as f:
+                data = json.load(f)
+                logger.info(f"License loaded: owner={data.get('owner')}, expires={data.get('expires')}")
+                return data
+        else:
+            logger.warning(f"License file not found: {LICENSE_FILE}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading license: {e}")
+        return None
 
-def save_license(license_key: str, owner: str, expires: str) -> None:
-    """Save license to storage"""
-    LICENSE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    data = {
-        "license_key": license_key,
-        "owner": owner,
-        "expires": expires,
-        "last_validated": datetime.utcnow().isoformat()
-    }
-    with open(LICENSE_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+def save_license(license_key: str, owner: str, expires: str) -> bool:
+    """Save license to storage - return success status"""
+    try:
+        LICENSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "license_key": license_key,
+            "owner": owner,
+            "expires": expires,
+            "last_validated": datetime.utcnow().isoformat()
+        }
+        with open(LICENSE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"License saved successfully to {LICENSE_FILE}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving license: {e}")
+        return False
 
 def is_expired(expires_str: str) -> bool:
     """Check if license is expired"""
@@ -103,7 +121,8 @@ async def validate_license(license_key: str | None = None) -> dict:
                     return {"valid": False, "error": "License expired"}
                 
                 # Save license if new
-                save_license(license_key, data.get("owner", ""), expires)
+                if not save_license(license_key, data.get("owner", ""), expires):
+                    logger.warning("License validated but failed to save to disk")
                 
                 return {
                     "valid": True,

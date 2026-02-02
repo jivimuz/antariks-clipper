@@ -114,43 +114,44 @@ async def license_middleware(request: Request, call_next):
     Middleware to check license validity for all API endpoints.
     Excludes license endpoints and health check.
     """
-    # Normalize path by removing trailing slash and query params
+    # Normalize path by removing trailing slash
     path = request.url.path.rstrip('/')
     
-    # Skip license check for these paths
-    excluded_paths = [
+    # Skip these paths completely
+    skip_paths = [
         "/health",
-        "/api/license/validate",
+        "/api/license",  # All license endpoints
         "/docs",
         "/redoc",
-        "/openapi.json"
+        "/openapi.json",
+        "/favicon.ico"
     ]
     
-    # Check if path should be protected (starts with /api/ and not in excluded list)
-    is_api_path = path.startswith("/api")
-    is_excluded = path in excluded_paths or any(path.startswith(excluded) for excluded in excluded_paths)
+    # Check if should skip
+    should_skip = any(path.startswith(p) or path == p for p in skip_paths)
     
-    if is_api_path and not is_excluded:
+    if not should_skip and path.startswith("/api"):
         try:
             status = get_license_status()
+            logger.debug(f"License check for {path}: activated={status.get('activated')}, valid={status.get('valid')}")
             
             if not status.get("activated"):
                 return Response(
-                    content=json.dumps({"detail": "License not activated"}),
+                    content=json.dumps({"detail": "License not activated. Please activate your license first."}),
                     status_code=401,
                     media_type="application/json"
                 )
             
-            if not status.get("valid", False):
+            if not status.get("valid"):
                 return Response(
                     content=json.dumps({
-                        "detail": status.get("error", "License is not valid")
+                        "detail": status.get("error", "License is invalid or expired")
                     }),
                     status_code=403,
                     media_type="application/json"
                 )
         except Exception as e:
-            logger.error(f"License middleware error: {e}")
+            logger.error(f"License check error: {e}")
             return Response(
                 content=json.dumps({"detail": "License validation error"}),
                 status_code=500,
