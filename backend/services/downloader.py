@@ -389,7 +389,7 @@ def download_youtube(
                 return True, None
             
             # Check if error is retryable
-            if error and any(keyword in error.lower() for keyword in ['network', 'timeout', 'connection', '429']):
+            if error and any(keyword in error.lower() for keyword in ['network', 'timeout', 'connection', '429', 'empty', 'too small']):
                 logger.warning(f"Retryable error on attempt {attempt + 1}: {error}")
                 continue
             else:
@@ -540,6 +540,12 @@ def _attempt_download(
                     logger.info("Removed invalid file")
                 except Exception as e:
                     logger.warning(f"Failed to remove invalid file: {e}")
+
+                # If file is empty or too small, try fallback methods before failing
+                if error_msg and any(keyword in error_msg.lower() for keyword in ['empty', 'too small', 'incomplete']):
+                    logger.info("🔄 Empty/invalid file detected. Trying fallback download methods...")
+                    return _download_fallback(url, output_path, cookies_file, progress_callback)
+
                 return False, f"Download validation failed: {error_msg}"
             
             logger.info(f"✓ File validated successfully: {file_size / 1024 / 1024:.1f} MB")
@@ -570,6 +576,14 @@ def _attempt_download(
                     if is_valid:
                         return True, None
                     else:
+                        # Try fallback if the alternate file is empty/invalid
+                        if error_msg and any(keyword in error_msg.lower() for keyword in ['empty', 'too small', 'incomplete']):
+                            logger.info("🔄 Empty/invalid alternate file detected. Trying fallback download methods...")
+                            try:
+                                alt_path.unlink()
+                            except Exception:
+                                pass
+                            return _download_fallback(url, output_path, cookies_file, progress_callback)
                         return False, f"Downloaded file validation failed: {error_msg}"
         
         error_msg = "Download completed but output file not found"
