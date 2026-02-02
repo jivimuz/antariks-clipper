@@ -108,7 +108,7 @@ export default function JobsPage() {
       
       // Enhanced success message with details
       let message = `Job deleted successfully! ${result.files_deleted} file(s) removed`;
-      if (result.space_freed_mb && result.space_freed_mb > 0) {
+      if (result.space_freed_mb > 0) {
         message += `, ${result.space_freed_mb} MB freed`;
       }
       if (result.files_failed > 0) {
