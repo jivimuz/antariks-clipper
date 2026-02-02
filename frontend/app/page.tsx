@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield } from 'lucide-react';
+import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield, CreditCard, User, LogOut } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 import { LicenseStatus } from '@/types/license';
@@ -155,59 +155,76 @@ export default function Home() {
 
   return (
     <>
-      {/* License Status Badge - Top Left */}
-      {licenseStatus && licenseStatus.activated && licenseStatus.valid && (
-        <div className="fixed top-4 left-4 z-50 bg-slate-900/80 backdrop-blur-sm border border-emerald-500/30 rounded-xl px-3 py-2 shadow-lg">
-          <div className="flex items-center gap-2">
-            <Shield size={16} className="text-emerald-400" />
-            <div className="text-xs">
-              <div className="text-emerald-400 font-semibold">
-                Licensed to: {licenseStatus.owner}
+
+      {/* --- Navigation Bar / Top Elements --- */}
+      <nav className="fixed top-0 left-0 right-0 z-50 px-4 py-4 md:px-6 flex justify-between items-start pointer-events-none">
+        
+        {/* License Badge (Top Left) */}
+        <div className="pointer-events-auto">
+          {licenseStatus && licenseStatus.activated && licenseStatus.valid ? (
+            <div className="flex items-center gap-3 px-4 py-2 bg-slate-900/80 backdrop-blur-md border border-emerald-500/20 rounded-full shadow-lg hover:border-emerald-500/40 transition-colors cursor-default group">
+              <div className="bg-emerald-500/20 p-1.5 rounded-full text-emerald-400 group-hover:scale-110 transition-transform">
+                <Shield size={14} />
               </div>
-              <div className="text-slate-400">
-                Expires: {licenseStatus.expires}
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase tracking-wider text-emerald-500/80 font-bold leading-none mb-0.5" style={{fontSize:14}}>{licenseStatus.owner}</span>
+                <span className="text-xs text-slate-300 font-medium leading-none" style={{fontSize:12}}>Expires: {licenseStatus.expires}</span>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
-      )}
 
-      <div className="fixed top-4 right-4 z-50 flex justify-end items-center">
-        {isLoggedIn ? (
-          <div className="relative flex gap-2">
-            <button
-              className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-2xl text-white border border-slate-700 hover:ring-2 hover:ring-emerald-400 transition-all"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="User menu"
-            >
-              <span role="img" aria-label="User">👤</span>
-            </button>
-            <a
-              href="/license"
-              className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-white font-bold text-xs"
-            >
-              License Settings
-            </a>
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-lg z-50">
+        {/* User Menu (Top Right) */}
+        <div className="pointer-events-auto relative">
+          {isLoggedIn ? (
+            <div className="flex items-center gap-3">
+               <a
+                href="/license"
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/50 rounded-full text-xs font-medium text-slate-300 transition-all hover:text-white"
+              >
+                <CreditCard size={14} />
+                License
+              </a>
+              
+              <div className="relative">
                 <button
-                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-slate-800 rounded-xl"
-                  onClick={handleLogout}
+                  className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-900/20 hover:ring-4 hover:ring-emerald-500/20 transition-all"
+                  onClick={() => setMenuOpen((v) => !v)}
                 >
-                  Logout
+                  <User size={18} />
                 </button>
+                
+                {/* Dropdown */}
+                {menuOpen && (
+                  <div className="absolute right-0 mt-3 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in slide-in-from-top-2">
+                    <div className="px-4 py-3 border-b border-slate-800 mb-1">
+                      <p className="text-xs text-slate-500 font-medium uppercase">Account</p>
+                    </div>
+                    <a href="/license" className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors sm:hidden">
+                      <CreditCard size={16} />
+                      License Settings
+                    </a>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left"
+                    >
+                      <LogOut size={16} />
+                      Log Out
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ) : (
-          <button
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold text-sm"
-            onClick={handleLogin}
-          >
-            Login
-          </button>
-        )}
-      </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleLogin}
+              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-full text-sm font-semibold text-white transition-all hover:shadow-lg hover:border-slate-600"
+            >
+              Sign In
+            </button>
+          )}
+        </div>
+      </nav>
 
       <div className="min-h-screen bg-slate-950 relative overflow-hidden flex items-center justify-center p-2 sm:p-4 selection:bg-emerald-500/30 font-sans">
         {/* Background Ambient Effects */}
@@ -398,7 +415,7 @@ export default function Home() {
             )}
 
             {/* Footer Links */}
-            <div className="mt-4 sm:mt-8 text-center">
+            <div className="mt-4 sm:mt-8 mb-4 text-center">
               <a
                 href="/jobs"
                 className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-emerald-400 transition-colors font-medium"
