@@ -333,10 +333,25 @@ def _attempt_download(
             
             return False, error_msg
         
-        # Verify file exists
+        # Verify file exists and is valid
         if output_path.exists():
             file_size = output_path.stat().st_size
-            logger.info(f"✓ File downloaded successfully: {file_size / 1024 / 1024:.1f} MB")
+            logger.info(f"✓ File downloaded: {file_size / 1024 / 1024:.1f} MB")
+            
+            # Validate the downloaded file
+            logger.info("🔍 Validating downloaded video file...")
+            is_valid, error_msg = _validate_video_file(output_path)
+            if not is_valid:
+                logger.error(f"❌ Downloaded file validation failed: {error_msg}")
+                # Remove invalid file
+                try:
+                    output_path.unlink()
+                    logger.info("Removed invalid file")
+                except Exception as e:
+                    logger.warning(f"Failed to remove invalid file: {e}")
+                return False, f"Download validation failed: {error_msg}"
+            
+            logger.info(f"✓ File validated successfully: {file_size / 1024 / 1024:.1f} MB")
             return True, None
         
         # Check if file with different extension exists
@@ -350,11 +365,21 @@ def _attempt_download(
                     if _convert_to_mp4(alt_path, output_path):
                         alt_path.unlink()
                         logger.info("✓ Conversion successful")
-                        return True, None
+                        # Validate converted file
+                        is_valid, error_msg = _validate_video_file(output_path)
+                        if is_valid:
+                            return True, None
+                        else:
+                            return False, f"Converted file validation failed: {error_msg}"
                     else:
                         return False, f"Downloaded but conversion from {ext} to mp4 failed"
                 else:
-                    return True, None
+                    # Validate the mp4 file
+                    is_valid, error_msg = _validate_video_file(alt_path)
+                    if is_valid:
+                        return True, None
+                    else:
+                        return False, f"Downloaded file validation failed: {error_msg}"
         
         error_msg = "Download completed but output file not found"
         logger.error(f"❌ {error_msg}")
@@ -438,10 +463,20 @@ def _download_fallback(
             if result.returncode == 0:
                 # Check for file
                 if output_path.exists():
-                    logger.info(f"✓ Fallback download successful with {strategy['name']}")
-                    if progress_callback:
-                        progress_callback(100, "Download complete (fallback)")
-                    return True, None
+                    # Validate the file
+                    is_valid, error_msg = _validate_video_file(output_path)
+                    if is_valid:
+                        logger.info(f"✓ Fallback download successful with {strategy['name']}")
+                        if progress_callback:
+                            progress_callback(100, "Download complete (fallback)")
+                        return True, None
+                    else:
+                        logger.warning(f"Fallback file validation failed: {error_msg}")
+                        # Try to remove invalid file and continue to next strategy
+                        try:
+                            output_path.unlink()
+                        except Exception:
+                            pass
                 
                 # Check for file with different extension
                 for ext in ['.mp4', '.mkv', '.webm']:
@@ -452,9 +487,21 @@ def _download_fallback(
                             if _convert_to_mp4(alt_path, output_path):
                                 alt_path.unlink()
                                 logger.info("✓ Conversion successful")
-                                return True, None
+                                # Validate converted file
+                                is_valid, error_msg = _validate_video_file(output_path)
+                                if is_valid:
+                                    return True, None
+                                else:
+                                    logger.warning(f"Converted file validation failed: {error_msg}")
+                                    continue
                         else:
-                            return True, None
+                            # Validate the file
+                            is_valid, error_msg = _validate_video_file(alt_path)
+                            if is_valid:
+                                return True, None
+                            else:
+                                logger.warning(f"File validation failed: {error_msg}")
+                                continue
             
             logger.warning(f"Fallback strategy '{strategy['name']}' failed: {result.stderr[:200]}")
             
@@ -473,6 +520,72 @@ def _download_fallback(
     logger.error("  2. Check if video is available and public")
     logger.error("  3. Try with cookies for age-restricted videos")
     return False, error_msg
+
+def _validate_video_file(file_path: Path, min_size_mb: float = 0.1) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that a video file is not empty and has valid content
+    
+    Args:
+        file_path: Path to video file
+        min_size_mb: Minimum file size in MB (default 0.1 MB = 100 KB)
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        if not file_path.exists():
+            return False, f"File does not exist: {file_path}"
+        
+        # Check file size
+        file_size = file_path.stat().st_size
+        file_size_mb = file_size / 1024 / 1024
+        
+        if file_size == 0:
+            return False, "Downloaded file is empty (0 bytes)"
+        
+        if file_size_mb < min_size_mb:
+            return False, f"Downloaded file is too small ({file_size_mb:.2f} MB). Minimum expected: {min_size_mb} MB"
+        
+        # Check if file is a valid video by trying to read metadata with ffprobe
+        logger.debug(f"Validating video file with ffprobe: {file_path}")
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_type,duration',
+            '-of', 'default=noprint_wrappers=1',
+            str(file_path)
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            return False, f"File appears corrupted or not a valid video format. ffprobe error: {result.stderr[:200]}"
+        
+        # Check if file has video stream
+        if 'codec_type=video' not in result.stdout:
+            return False, "File does not contain a video stream"
+        
+        logger.debug(f"✓ Video file validation passed: {file_size_mb:.2f} MB")
+        return True, None
+        
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Video validation timed out for {file_path}")
+        # Don't fail on timeout, consider file valid if it exists and has size
+        if file_path.exists() and file_path.stat().st_size > 0:
+            return True, None
+        return False, "Video validation timed out and file appears invalid"
+    except Exception as e:
+        logger.warning(f"Error during video validation: {e}")
+        # Don't fail on validation errors if file exists and has reasonable size
+        if file_path.exists() and file_path.stat().st_size > min_size_mb * 1024 * 1024:
+            return True, None
+        return False, f"Video validation error: {str(e)}"
 
 def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
     """Convert video to mp4 using ffmpeg with progress logging - optimized for long videos"""

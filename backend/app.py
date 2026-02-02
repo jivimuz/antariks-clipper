@@ -697,15 +697,20 @@ def delete_job(job_id: str):
     - Transcripts
     - Thumbnails
     - Rendered videos
+    - Any temporary or partial download files
     """
     try:
         job = db.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
+        logger.info(f"=== Starting deletion for job {job_id} ===")
+        
         # Get all associated data before deletion
         clips = db.get_clips_by_job(job_id)
         renders = db.get_renders_by_job(job_id)
+        
+        logger.info(f"Found {len(clips)} clips and {len(renders)} renders to delete")
         
         # Delete files
         files_to_delete = []
@@ -713,6 +718,14 @@ def delete_job(job_id: str):
         # Add job files
         if job.get('raw_path'):
             files_to_delete.append(job['raw_path'])
+            # Also check for potential partial/temp files with same base name
+            raw_path = Path(job['raw_path'])
+            base_name = raw_path.stem
+            for ext in ['.part', '.temp', '.tmp', '.ytdl']:
+                temp_file = raw_path.parent / f"{base_name}{ext}"
+                if temp_file.exists():
+                    files_to_delete.append(str(temp_file))
+        
         if job.get('normalized_path'):
             files_to_delete.append(job['normalized_path'])
         
@@ -720,6 +733,12 @@ def delete_job(job_id: str):
         transcript_path = Path(config.TRANSCRIPTS_DIR) / f"{job_id}.json"
         if transcript_path.exists():
             files_to_delete.append(str(transcript_path))
+        
+        # Check for any other transcript-related files
+        for ext in ['.txt', '.srt', '.vtt']:
+            alt_transcript = Path(config.TRANSCRIPTS_DIR) / f"{job_id}{ext}"
+            if alt_transcript.exists():
+                files_to_delete.append(str(alt_transcript))
         
         # Add clip thumbnails
         for clip in clips:
@@ -731,15 +750,32 @@ def delete_job(job_id: str):
             if render.get('output_path'):
                 files_to_delete.append(render['output_path'])
         
+        # Check for any orphaned files with this job_id in various directories
+        for directory in [config.RAW_DIR, config.NORMALIZED_DIR, config.TRANSCRIPTS_DIR, 
+                         config.THUMBNAILS_DIR, config.RENDERS_DIR]:
+            if directory.exists():
+                for file_path in directory.glob(f"{job_id}*"):
+                    file_str = str(file_path)
+                    if file_str not in files_to_delete:
+                        files_to_delete.append(file_str)
+                        logger.info(f"Found orphaned file: {file_path}")
+        
+        logger.info(f"Total files to delete: {len(files_to_delete)}")
+        
         # Delete files from filesystem
         deleted_files = []
         failed_files = []
+        total_size_freed = 0
         for file_path in files_to_delete:
             try:
                 if os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
                     os.remove(file_path)
                     deleted_files.append(file_path)
-                    logger.info(f"✓ Deleted file: {file_path}")
+                    total_size_freed += file_size
+                    logger.info(f"✓ Deleted file: {file_path} ({file_size / 1024 / 1024:.2f} MB)")
+                else:
+                    logger.debug(f"File not found (already deleted?): {file_path}")
             except Exception as e:
                 logger.error(f"❌ Failed to delete file {file_path}: {e}")
                 failed_files.append(file_path)
@@ -747,14 +783,18 @@ def delete_job(job_id: str):
         # Delete database records (cascading deletion)
         db.delete_job(job_id)
         
-        logger.info(f"✓ Job {job_id} deleted successfully. Files deleted: {len(deleted_files)}, Failed: {len(failed_files)}")
+        logger.info(f"✓ Job {job_id} deleted successfully")
+        logger.info(f"  - Files deleted: {len(deleted_files)}")
+        logger.info(f"  - Failed deletions: {len(failed_files)}")
+        logger.info(f"  - Disk space freed: {total_size_freed / 1024 / 1024:.2f} MB")
         
         return {
             "message": "Job deleted successfully",
             "job_id": job_id,
             "files_deleted": len(deleted_files),
             "files_failed": len(failed_files),
-            "failed_files": failed_files if failed_files else None
+            "failed_files": failed_files if failed_files else None,
+            "space_freed_mb": round(total_size_freed / 1024 / 1024, 2)
         }
     
     except HTTPException:
