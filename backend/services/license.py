@@ -47,6 +47,33 @@ def _get_mac_address() -> str:
         return "UNKNOWN-MAC"
 
 
+def _check_expiration(expires_str: str) -> Optional[str]:
+    """
+    Check if license expiration date is valid.
+    
+    Args:
+        expires_str: Expiration date in YYYY-MM-DD format
+        
+    Returns:
+        None if valid, error message if expired or invalid format
+    """
+    if not expires_str or expires_str == "Unknown":
+        return None  # No expiration to check
+    
+    try:
+        expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        
+        if expires_date < today:
+            logger.warning(f"License expired: {expires_str}")
+            return "License expired"
+        
+        return None  # Valid
+    except ValueError as e:
+        logger.error(f"Invalid expiration date format: {expires_str} - {e}")
+        return None  # Treat invalid format as no expiration check
+
+
 def _load_license_data() -> Optional[Dict]:
     """Load license data from storage file"""
     try:
@@ -110,20 +137,13 @@ def validate_license_with_server(license_key: str) -> Dict:
             if data.get("valid"):
                 # Check expiration date
                 expires_str = data.get("expires", "")
-                try:
-                    from datetime import datetime
-                    expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
-                    today = datetime.now().date()
-                    
-                    if expires_date < today:
-                        # License is expired
-                        logger.warning(f"License expired: {expires_str}")
-                        return {
-                            "valid": False,
-                            "error": "License expired"
-                        }
-                except ValueError:
-                    logger.error(f"Invalid expiration date format: {expires_str}")
+                expiration_error = _check_expiration(expires_str)
+                
+                if expiration_error:
+                    return {
+                        "valid": False,
+                        "error": expiration_error
+                    }
                 
                 return {
                     "valid": True,
@@ -247,22 +267,15 @@ def get_license_status() -> Dict:
         logger.error(f"Error checking license cache: {e}")
     
     # Check expiration date even for cached status
-    try:
-        expires_str = license_data.get("expires", "")
-        if expires_str and expires_str != "Unknown":
-            expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
-            today = datetime.now().date()
-            
-            if expires_date < today:
-                # License is expired
-                logger.warning(f"Cached license expired: {expires_str}")
-                return {
-                    "activated": True,
-                    "valid": False,
-                    "error": "License expired"
-                }
-    except ValueError as e:
-        logger.error(f"Invalid expiration date format in cache: {e}")
+    expires_str = license_data.get("expires", "")
+    expiration_error = _check_expiration(expires_str)
+    
+    if expiration_error:
+        return {
+            "activated": True,
+            "valid": False,
+            "error": expiration_error
+        }
     
     # Return cached status
     return {
@@ -377,21 +390,14 @@ def validate_license(license_key: Optional[str] = None) -> Dict:
             logger.error(f"Error checking license cache: {e}")
         
         # Check expiration date for cached status
-        try:
-            expires_str = license_data.get("expires", "")
-            if expires_str and expires_str != "Unknown":
-                expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
-                today = datetime.now().date()
-                
-                if expires_date < today:
-                    # License is expired
-                    logger.warning(f"Cached license expired: {expires_str}")
-                    return {
-                        "valid": False,
-                        "error": "License expired"
-                    }
-        except ValueError as e:
-            logger.error(f"Invalid expiration date format in cache: {e}")
+        expires_str = license_data.get("expires", "")
+        expiration_error = _check_expiration(expires_str)
+        
+        if expiration_error:
+            return {
+                "valid": False,
+                "error": expiration_error
+            }
         
         # Return cached status
         return {
