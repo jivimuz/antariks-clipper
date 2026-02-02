@@ -144,7 +144,7 @@ def test_error_message_parsing():
         ("ERROR: Sign in to confirm your age", "age"),
         ("HTTP Error 403: Forbidden", "Access forbidden"),
         ("HTTP Error 404", "unavailable"),
-        ("HTTP Error 429", "Too many requests"),
+        ("HTTP Error 429", "quota"),  # Updated: now returns "quota exceeded"
         ("timeout", "timed out"),  # Fixed: the parsed message says "timed out"
         ("Network error", "Network error"),
     ]

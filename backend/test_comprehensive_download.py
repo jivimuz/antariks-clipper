@@ -26,6 +26,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Default test video URL (can be overridden via command line)
+DEFAULT_TEST_URL = "https://www.youtube.com/watch?v=NEcbdGkJgcA"
+
 def test_dependency_check():
     """Test dependency checking including version age check"""
     logger.info("="*80)
@@ -210,6 +213,16 @@ def test_validation_enhancements():
 
 def main():
     """Run all tests"""
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Comprehensive YouTube download test suite')
+    parser.add_argument('--url', type=str, default=DEFAULT_TEST_URL,
+                       help=f'YouTube URL to test (default: {DEFAULT_TEST_URL})')
+    args = parser.parse_args()
+    
+    test_url = args.url
+    
     print("\n")
     print("="*80)
     print("COMPREHENSIVE YOUTUBE DOWNLOAD TEST SUITE")
@@ -217,7 +230,6 @@ def main():
     print()
     
     # Test video URL
-    test_url = "https://www.youtube.com/watch?v=NEcbdGkJgcA"
     output_dir = Path("/tmp/antariks_test")
     output_dir.mkdir(exist_ok=True)
     

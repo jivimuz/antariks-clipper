@@ -62,21 +62,24 @@ def check_dependencies() -> Tuple[bool, list, dict]:
                 current_version = versions['yt-dlp']
                 # Version format: YYYY.MM.DD
                 if current_version and current_version != 'unknown':
-                    # Extract year and month
+                    # Extract year and month with error handling
                     version_parts = current_version.split('.')
                     if len(version_parts) >= 2:
-                        year = int(version_parts[0])
-                        month = int(version_parts[1])
-                        
-                        # If version is older than 2 months, warn
-                        import datetime
-                        now = datetime.datetime.now()
-                        version_date = datetime.datetime(year, month, 1)
-                        age_months = (now.year - version_date.year) * 12 + now.month - version_date.month
-                        
-                        if age_months > 2:
-                            logger.warning(f"⚠️ yt-dlp version {current_version} is {age_months} months old")
-                            logger.warning("💡 Consider updating: pip install --upgrade yt-dlp")
+                        try:
+                            year = int(version_parts[0])
+                            month = int(version_parts[1])
+                            
+                            # If version is older than 2 months, warn
+                            import datetime
+                            now = datetime.datetime.now()
+                            version_date = datetime.datetime(year, month, 1)
+                            age_months = (now.year - version_date.year) * 12 + now.month - version_date.month
+                            
+                            if age_months > 2:
+                                logger.warning(f"⚠️ yt-dlp version {current_version} is {age_months} months old")
+                                logger.warning("💡 Consider updating: pip install --upgrade yt-dlp")
+                        except (ValueError, TypeError) as ve:
+                            logger.debug(f"Could not parse version numbers from {current_version}: {ve}")
             except Exception as e:
                 logger.debug(f"Could not check yt-dlp version age: {e}")
         except Exception as e:
@@ -774,7 +777,7 @@ def _validate_video_file(file_path: Path, min_size_mb: float = 0.1, expected_dur
             'ffprobe',
             '-v', 'error',
             '-show_entries', 'stream=codec_type,codec_name,duration:format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=0',
+            '-of', 'default=noprint_wrappers=1',  # Include keys in output (key=value format)
             str(file_path)
         ]
         
