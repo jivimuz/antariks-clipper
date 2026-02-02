@@ -80,11 +80,26 @@ def process_job(job_id: str):
         
         if job['source_type'] == 'youtube':
             raw_path = raw_path_youtube
+            
+            # Progress callback to update job progress (maps download 0-100% to job 10-30%)
+            def update_download_progress(percent, message):
+                db.update_job(job_id, progress=10 + int(percent * 0.2), step=f'download: {message}')
+            
             if raw_path.exists():
                 logger.info(f"Raw file exists, skipping download: {raw_path}")
             else:
-                if not download_youtube(job['source_url'], raw_path):
-                    db.update_job(job_id, status='failed', error='Download failed')
+                logger.info(f"Starting YouTube download: {job['source_url']}")
+                success = download_youtube(
+                    job['source_url'], 
+                    raw_path,
+                    progress_callback=update_download_progress
+                )
+                if not success:
+                    db.update_job(
+                        job_id, 
+                        status='failed', 
+                        error='YouTube download failed. Please check if the URL is valid and accessible.'
+                    )
                     return
         else:
             raw_path = Path(job['raw_path']) if job.get('raw_path') else None

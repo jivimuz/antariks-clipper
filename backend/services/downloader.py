@@ -2,156 +2,316 @@
 import subprocess
 import logging
 import shutil
+import os
+import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 logger = logging.getLogger(__name__)
 
-def check_dependencies() -> Tuple[bool, list]:
-    """Check if required dependencies are installed"""
+def check_dependencies() -> Tuple[bool, list, dict]:
+    """Check if required dependencies are installed and get versions"""
     missing = []
+    versions = {}
     
     # Check ffmpeg
     if not shutil.which('ffmpeg'):
         missing.append('ffmpeg')
+    else:
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
+            match = re.search(r'ffmpeg version (\S+)', result.stdout)
+            versions['ffmpeg'] = match.group(1) if match else 'unknown'
+        except Exception as e:
+            logger.debug(f"Could not get ffmpeg version: {e}")
+            versions['ffmpeg'] = 'unknown'
     
     # Check yt-dlp
     if not shutil.which('yt-dlp'):
         missing.append('yt-dlp')
+    else:
+        try:
+            result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=10)
+            versions['yt-dlp'] = result.stdout.strip()
+        except Exception as e:
+            logger.debug(f"Could not get yt-dlp version: {e}")
+            versions['yt-dlp'] = 'unknown'
     
-    return len(missing) == 0, missing
+    return len(missing) == 0, missing, versions
 
-def download_youtube(url: str, output_path: Path) -> bool:
-    """Download YouTube video using yt-dlp with robust fallback options"""
+def validate_youtube_url(url: str) -> bool:
+    """Validate YouTube URL format"""
+    patterns = [
+        r'^https?://(www\.)?youtube\.com/watch\?v=[\w-]+',
+        r'^https?://youtu\.be/[\w-]+',
+        r'^https?://(www\.)?youtube\.com/shorts/[\w-]+',
+        r'^https?://(www\.)?youtube\.com/live/[\w-]+',
+    ]
+    return any(re.match(p, url) for p in patterns)
+
+def download_youtube(
+    url: str, 
+    output_path: Path,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    cookies_file: Optional[Path] = None
+) -> bool:
+    """
+    Download YouTube video using yt-dlp with robust fallback options
+    
+    Args:
+        url: YouTube URL
+        output_path: Output file path (should end with .mp4)
+        progress_callback: Optional callback(percent, status_message)
+        cookies_file: Optional path to cookies.txt for authenticated downloads
+    
+    Returns:
+        True if successful, False otherwise
+    """
     try:
-        # Check dependencies first
-        deps_ok, missing = check_dependencies()
+        # Validate URL
+        if not validate_youtube_url(url):
+            logger.error(f"Invalid YouTube URL: {url}")
+            return False
+        
+        # Check dependencies
+        deps_ok, missing, versions = check_dependencies()
         if not deps_ok:
             logger.error(f"Missing dependencies: {', '.join(missing)}. Please install them first.")
+            logger.error("Install with: pip install yt-dlp (or brew install yt-dlp)")
             return False
+        
+        logger.info(f"Dependencies OK - yt-dlp: {versions.get('yt-dlp')}, ffmpeg: {versions.get('ffmpeg')}")
         
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Remove extension if present (yt-dlp adds it)
-        output_template = str(output_path.with_suffix('')) + '.%(ext)s'
+        # Clean output path - ensure it ends with .mp4
+        if output_path.suffix != '.mp4':
+            output_path = output_path.with_suffix('.mp4')
         
+        # Remove existing file if any
+        if output_path.exists():
+            output_path.unlink()
+        
+        # yt-dlp output template (without extension, yt-dlp adds it)
+        output_template = str(output_path.with_suffix(''))
+        
+        # Build command with latest recommended options for YouTube 2024+
         cmd = [
             'yt-dlp',
-            # Format selection with fallbacks
-            '-f', 'bv*[ext=mp4]+ba[ext=m4a]/bv*[ext=mp4]+ba/bv+ba/b',
-            # Force mp4 output
-            '--merge-output-format', 'mp4',
-            # Use android client to bypass SABR streaming restrictions
-            '--extractor-args', 'youtube:player_client=android,web',
-            # Retry options
-            '--retries', '5',
-            '--fragment-retries', '5',
-            # Don't abort on unavailable fragments
-            '--skip-unavailable-fragments',
-            # Output path
-            '-o', output_template,
-            # Quiet progress but show errors
             '--no-warnings',
-            '--progress',
-            # The URL
-            url
+            '--no-check-certificate',
+            # Format: prefer mp4, fallback to best available
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
+            '--merge-output-format', 'mp4',
+            # Use multiple clients for better compatibility
+            '--extractor-args', 'youtube:player_client=ios,web',
+            # Retry settings
+            '--retries', '10',
+            '--fragment-retries', '10',
+            '--retry-sleep', '3',
+            # Skip unavailable fragments instead of failing
+            '--skip-unavailable-fragments',
+            # Output
+            '-o', f'{output_template}.%(ext)s',
+            # Progress
+            '--newline',
+            '--progress-template', '%(progress._percent_str)s',
         ]
         
-        logger.info(f"Downloading YouTube video: {url}")
+        # Add cookies if provided
+        if cookies_file and cookies_file.exists():
+            cmd.extend(['--cookies', str(cookies_file)])
+            logger.info("Using cookies file for authentication")
+        
+        # Add URL
+        cmd.append(url)
+        
+        logger.info(f"Downloading: {url}")
         logger.debug(f"Command: {' '.join(cmd)}")
         
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=1800  # 30 minutes timeout
+        if progress_callback:
+            progress_callback(0, "Starting download...")
+        
+        # Run with live output for progress
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1
         )
         
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout
-            logger.error(f"yt-dlp error: {error_msg}")
-            
-            # Try alternative format if first attempt fails
-            logger.info("Retrying with alternative format...")
-            cmd_alt = [
-                'yt-dlp',
-                '-f', 'best[ext=mp4]/best',
-                '--extractor-args', 'youtube:player_client=android',
-                '--retries', '3',
-                '-o', output_template,
-                url
-            ]
-            
-            result = subprocess.run(
-                cmd_alt,
-                capture_output=True,
-                text=True,
-                timeout=1800
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"yt-dlp retry failed: {result.stderr or result.stdout}")
-                return False
+        last_percent = 0
+        stdout_lines = []
         
-        # Check if file was created (yt-dlp might use different extension)
-        expected_mp4 = output_path.with_suffix('.mp4')
-        if expected_mp4.exists():
-            # Rename to expected path if different
-            if expected_mp4 != output_path:
-                expected_mp4.rename(output_path)
-            logger.info(f"Downloaded: {output_path}")
+        for line in process.stdout:
+            line = line.strip()
+            stdout_lines.append(line)
+            
+            # Parse progress
+            if '%' in line:
+                try:
+                    percent_str = line.replace('%', '').strip()
+                    percent = int(float(percent_str))
+                    if percent != last_percent and progress_callback:
+                        progress_callback(percent, f"Downloading... {percent}%")
+                        last_percent = percent
+                except (ValueError, TypeError):
+                    # Ignore lines that don't contain valid progress percentages
+                    pass
+        
+        stderr = process.stderr.read()
+        process.wait()
+        
+        if process.returncode != 0:
+            logger.error(f"yt-dlp failed (code {process.returncode})")
+            logger.error(f"stderr: {stderr}")
+            
+            # Try fallback method
+            return _download_fallback(url, output_path, cookies_file, progress_callback)
+        
+        # Verify file exists
+        if output_path.exists():
+            file_size = output_path.stat().st_size
+            logger.info(f"Download complete: {output_path} ({file_size / 1024 / 1024:.1f} MB)")
+            if progress_callback:
+                progress_callback(100, "Download complete!")
             return True
         
-        # Check for any video file with the base name
+        # Check if file with different extension exists
         for ext in ['.mp4', '.mkv', '.webm']:
-            check_path = output_path.with_suffix(ext)
-            if check_path.exists():
-                if check_path != output_path:
-                    # Convert to mp4 if needed
-                    if ext != '.mp4':
-                        if convert_to_mp4(check_path, output_path):
-                            check_path.unlink()
-                        else:
-                            logger.error(f"Failed to convert {check_path} to mp4")
-                            return False
-                    else:
-                        check_path.rename(output_path)
-                logger.info(f"Downloaded: {output_path}")
-                return True
+            alt_path = output_path.with_suffix(ext)
+            if alt_path.exists():
+                if ext != '.mp4':
+                    # Convert to mp4
+                    if _convert_to_mp4(alt_path, output_path):
+                        alt_path.unlink()
+                        return True
+                else:
+                    return True
         
-        logger.error(f"Download completed but file not found: {output_path}")
+        logger.error(f"Download completed but output file not found: {output_path}")
         return False
         
     except subprocess.TimeoutExpired:
-        logger.error("Download timeout (30 minutes)")
+        logger.error("Download timeout")
         return False
     except Exception as e:
-        logger.error(f"Download error: {e}")
+        logger.error(f"Download error: {e}", exc_info=True)
         return False
 
-def convert_to_mp4(input_path: Path, output_path: Path) -> bool:
+def _download_fallback(
+    url: str, 
+    output_path: Path,
+    cookies_file: Optional[Path] = None,
+    progress_callback: Optional[Callable[[int, str], None]] = None
+) -> bool:
+    """Fallback download method with simpler options"""
+    logger.info("Trying fallback download method...")
+    
+    if progress_callback:
+        progress_callback(0, "Retrying with fallback method...")
+    
+    output_template = str(output_path.with_suffix(''))
+    
+    # Simpler command for fallback
+    cmd = [
+        'yt-dlp',
+        '-f', 'best[ext=mp4]/best',
+        '--no-warnings',
+        '--no-check-certificate',
+        '--extractor-args', 'youtube:player_client=android',
+        '-o', f'{output_template}.%(ext)s',
+        '--retries', '5',
+    ]
+    
+    if cookies_file and cookies_file.exists():
+        cmd.extend(['--cookies', str(cookies_file)])
+    
+    cmd.append(url)
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600  # 1 hour timeout
+        )
+        
+        if result.returncode == 0 and output_path.exists():
+            logger.info("Fallback download successful")
+            if progress_callback:
+                progress_callback(100, "Download complete (fallback)")
+            return True
+        
+        # Check for file with different extension
+        for ext in ['.mp4', '.mkv', '.webm']:
+            alt_path = output_path.with_suffix(ext)
+            if alt_path.exists():
+                if ext != '.mp4':
+                    if _convert_to_mp4(alt_path, output_path):
+                        alt_path.unlink()
+                        return True
+                else:
+                    return True
+        
+        logger.error(f"Fallback also failed: {result.stderr}")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Fallback error: {e}")
+        return False
+
+def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
     """Convert video to mp4 using ffmpeg"""
     try:
-        logger.info(f"Converting {input_path} to mp4...")
+        logger.info(f"Converting {input_path.suffix} to mp4...")
         cmd = [
             'ffmpeg',
             '-i', str(input_path),
             '-c:v', 'libx264',
+            '-preset', 'fast',
             '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
             '-y',
             str(output_path)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode == 0:
-            logger.info(f"Successfully converted to {output_path}")
+        # 30 minute timeout for large video files (HD/4K content)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        
+        if result.returncode == 0 and output_path.exists():
+            logger.info(f"Conversion successful: {output_path}")
             return True
-        else:
-            logger.error(f"Conversion failed: {result.stderr}")
-            return False
+        
+        logger.error(f"Conversion failed: {result.stderr}")
+        return False
+        
     except Exception as e:
         logger.error(f"Convert error: {e}")
         return False
+
+def get_video_info(url: str) -> Optional[dict]:
+    """Get video info without downloading"""
+    try:
+        cmd = [
+            'yt-dlp',
+            '--dump-json',
+            '--no-download',
+            '--no-warnings',
+            url
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0:
+            import json
+            return json.loads(result.stdout)
+        return None
+        
+    except Exception as e:
+        logger.error(f"Get video info error: {e}")
+        return None
 
 def save_upload(file_data: bytes, output_path: Path) -> bool:
     """Save uploaded file"""
@@ -159,8 +319,11 @@ def save_upload(file_data: bytes, output_path: Path) -> bool:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'wb') as f:
             f.write(file_data)
-        logger.info(f"Saved upload: {output_path}")
+        
+        file_size = output_path.stat().st_size
+        logger.info(f"Saved upload: {output_path} ({file_size / 1024 / 1024:.1f} MB)")
         return True
+        
     except Exception as e:
         logger.error(f"Save upload error: {e}")
         return False
