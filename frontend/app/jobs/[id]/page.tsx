@@ -8,7 +8,7 @@ import {
   ArrowLeft, Play, CheckCircle2, Clock, AlertCircle, 
   Settings2, Download, Check, X, Wand2, FileText, 
   ScanFace, Share2, MoreVertical, Loader2, Youtube, FileVideo,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Users
 } from 'lucide-react';
 import { getApiUrl, getApiEndpoint } from '@/lib/api';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -60,6 +60,7 @@ export default function JobDetailPage() {
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
   const [previewClipId, setPreviewClipId] = useState<string | null>(null);
   const [faceTracking, setFaceTracking] = useState(true);
+  const [smartCrop, setSmartCrop] = useState(false);
   const [captions, setCaptions] = useState(false);
   const [watermarkText, setWatermarkText] = useState("");
   const [rendering, setRendering] = useState(false);
@@ -185,6 +186,7 @@ export default function JobDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           face_tracking: faceTracking,
+          smart_crop: smartCrop,
           captions: captions,
           watermark_text: watermarkText
         })
@@ -442,7 +444,7 @@ export default function JobDetailPage() {
                                     const res = await fetch(`${API_URL}/api/clips/${activeClip.id}/render`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ face_tracking: faceTracking, captions, watermark_text: watermarkText })
+                                      body: JSON.stringify({ face_tracking: faceTracking, smart_crop: smartCrop, captions, watermark_text: watermarkText })
                                     });
                                     if (!res.ok) {
                                       const err = await res.json();
@@ -528,6 +530,17 @@ export default function JobDetailPage() {
                       <ScanFace size={16} />
                       Face Tracking
                       <div className={`w-2 h-2 rounded-full ${faceTracking ? 'bg-emerald-500' : 'bg-slate-600'}`} />
+                    </button>
+                    <button 
+                      aria-label="Toggle smart crop"
+                      onClick={() => setSmartCrop(!smartCrop)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        smartCrop ? 'bg-purple-500/10 text-purple-400' : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <Users size={16} />
+                      Smart Crop
+                      <div className={`w-2 h-2 rounded-full ${smartCrop ? 'bg-purple-500' : 'bg-slate-600'}`} />
                     </button>
                     <div className="w-px h-4 bg-slate-800"></div>
                     <button 

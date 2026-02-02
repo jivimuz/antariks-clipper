@@ -193,6 +193,7 @@ def process_render(render_id: str):
         # Get options
         options = render.get('options', {})
         face_tracking = options.get('face_tracking', False)
+        smart_crop = options.get('smart_crop', False)
         captions = options.get('captions', False)
         
         # Output path
@@ -218,6 +219,7 @@ def process_render(render_id: str):
             start_sec=clip['start_sec'],
             end_sec=clip['end_sec'],
             face_tracking=face_tracking,
+            smart_crop=smart_crop,
             captions=captions,
             transcript_snippet=clip.get('transcript_snippet', '')
         )

@@ -454,6 +454,7 @@ class MultiClipCreate(BaseModel):
 
 class RenderCreate(BaseModel):
     face_tracking: bool = False
+    smart_crop: bool = False
     captions: bool = False
     watermark_text: str = ""
 
