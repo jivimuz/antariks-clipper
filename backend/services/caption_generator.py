@@ -87,7 +87,7 @@ def generate_hashtags(
     if metadata and 'categories' in metadata:
         categories = metadata['categories']
         if 'importance' in categories:
-            hashtags.extend(["important", "musttknow", "tips"])
+            hashtags.extend(["important", "mustknow", "tips"])
         if 'revelation' in categories:
             hashtags.extend(["amazing", "mindblown", "facts"])
         if 'teaching' in categories:
