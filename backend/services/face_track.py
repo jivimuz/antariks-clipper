@@ -80,6 +80,65 @@ class FaceTracker:
             logger.debug(f"Mouth openness error: {e}")
             return None
     
+    def get_all_mouth_openness(self, frame: np.ndarray, faces: List[Dict]) -> Dict[int, float]:
+        """
+        Get mouth openness for all tracked faces
+        
+        Args:
+            frame: Input video frame
+            faces: List of face tracks with 'id' and 'bbox'
+        
+        Returns:
+            Dictionary mapping face_id to mouth openness value
+        """
+        mouth_data = {}
+        
+        try:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.face_mesh.process(rgb_frame)
+            
+            if results.multi_face_landmarks and faces:
+                h, w, _ = frame.shape
+                
+                # Match face landmarks to tracked faces by proximity
+                for landmarks in results.multi_face_landmarks:
+                    # Get mouth landmarks
+                    upper_lip = landmarks.landmark[13]
+                    lower_lip = landmarks.landmark[14]
+                    
+                    # Calculate vertical distance
+                    upper_y = upper_lip.y * h
+                    lower_y = lower_lip.y * h
+                    openness = abs(lower_y - upper_y)
+                    
+                    # Match to closest face by checking face center proximity
+                    mouth_center_x = (upper_lip.x + lower_lip.x) / 2 * w
+                    mouth_center_y = (upper_lip.y + lower_lip.y) / 2 * h
+                    
+                    best_match_id = None
+                    best_distance = float('inf')
+                    
+                    for face in faces:
+                        fx, fy, fw, fh = face['bbox']
+                        face_center_x = fx + fw // 2
+                        face_center_y = fy + fh // 2
+                        
+                        # Use squared distance for efficiency (no need for sqrt)
+                        distance_sq = ((mouth_center_x - face_center_x) ** 2 + 
+                                      (mouth_center_y - face_center_y) ** 2)
+                        
+                        if distance_sq < best_distance:
+                            best_distance = distance_sq
+                            best_match_id = face['id']
+                    
+                    if best_match_id is not None:
+                        mouth_data[best_match_id] = openness
+        
+        except Exception as e:
+            logger.debug(f"All mouth openness error: {e}")
+        
+        return mouth_data
+    
     def close(self):
         """Cleanup resources"""
         self.face_detection.close()

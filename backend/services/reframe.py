@@ -5,6 +5,8 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 from services.face_track import FaceTracker, match_tracks
+from services.speaker_detect import SpeakerDetector
+from services.smart_crop import SmartCropper
 from config import FACE_DETECTION_INTERVAL, EMA_ALPHA
 
 logger = logging.getLogger(__name__)
@@ -196,3 +198,116 @@ def reframe_video_with_tracking(
     except Exception as e:
         logger.error(f"Reframe error: {e}")
         return False
+
+
+def reframe_video_smart(
+    input_path: Path,
+    output_path: Path,
+    output_width: int = 1080,
+    output_height: int = 1920,
+    start_sec: float = 0,
+    duration: float = None
+) -> bool:
+    """
+    Smart reframe video with automatic mode detection:
+    1. Analyze video to detect faces
+    2. Determine mode (solo/duo_switch/duo_split) per segment
+    3. Apply appropriate cropping
+    
+    Args:
+        input_path: Path to input video
+        output_path: Path to output video
+        output_width: Output width (default 1080)
+        output_height: Output height (default 1920)
+        start_sec: Start time in seconds
+        duration: Duration in seconds (None for full video)
+    
+    Returns:
+        True if successful
+    """
+    try:
+        cap = cv2.VideoCapture(str(input_path))
+        
+        if not cap.isOpened():
+            logger.error(f"Cannot open video: {input_path}")
+            return False
+        
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Calculate frame range
+        start_frame = int(start_sec * fps)
+        if duration:
+            end_frame = int((start_sec + duration) * fps)
+        else:
+            end_frame = total_frames
+        
+        # Initialize components
+        face_tracker = FaceTracker()
+        speaker_detector = SpeakerDetector()
+        cropper = SmartCropper(video_width, video_height, output_width, output_height)
+        
+        # Seek to start
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        
+        # Output video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(str(output_path), fourcc, fps, (output_width, output_height))
+        
+        frame_idx = 0
+        current_frame = start_frame
+        tracks = []
+        
+        logger.info(f"Smart reframing video: {input_path} -> {output_path}")
+        
+        while current_frame < end_frame:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Detect faces periodically
+            if frame_idx % FACE_DETECTION_INTERVAL == 0:
+                faces = face_tracker.detect_faces(frame)
+                tracks = match_tracks(tracks, faces)
+                
+                # Get mouth openness for all tracked faces
+                mouth_data = face_tracker.get_all_mouth_openness(frame, tracks)
+                
+                # Update tracks with mouth openness
+                for track in tracks:
+                    track['mouth_openness'] = mouth_data.get(track['id'])
+            
+            # Detect speakers
+            speaker_info = speaker_detector.update(frame, tracks)
+            
+            # Apply smart cropping
+            cropped = cropper.process_frame(
+                frame,
+                tracks,
+                speaker_info["speakers"],
+                speaker_info["mode"]
+            )
+            
+            # Write frame
+            out.write(cropped)
+            
+            frame_idx += 1
+            current_frame += 1
+            
+            if frame_idx % 100 == 0:
+                logger.info(f"Processed {frame_idx} frames (mode: {speaker_info['mode']})")
+        
+        cap.release()
+        out.release()
+        face_tracker.close()
+        
+        logger.info(f"Smart reframing complete: {output_path}")
+        return output_path.exists()
+        
+    except Exception as e:
+        logger.error(f"Smart reframe error: {e}")
+        return False
+
