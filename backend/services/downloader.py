@@ -14,13 +14,17 @@ logger = logging.getLogger(__name__)
 ERROR_MESSAGES = {
     'unavailable': 'Video is unavailable or has been removed',
     'private': 'Video is private and cannot be accessed',
-    'region_blocked': 'Video is blocked in your region',
+    'region_blocked': 'Video is blocked in your region due to geographical restrictions',
     'age_restricted': 'Video is age-restricted and requires authentication',
     'copyright': 'Video contains copyrighted content and cannot be downloaded',
     'live': 'Live streams cannot be downloaded yet',
     'network': 'Network error occurred. Please check your connection',
     'timeout': 'Download timed out. The video may be too large or connection is slow',
-    'format': 'Video format is not supported',
+    'format': 'Video format is not supported or no suitable format available',
+    'drm': 'Video is protected by DRM (Digital Rights Management) and cannot be downloaded',
+    'api_block': 'YouTube API access blocked. This may be temporary rate limiting or IP-based restriction',
+    'quota_exceeded': 'YouTube API quota exceeded. Please try again later',
+    'bot_detected': 'YouTube detected automated access. Try updating yt-dlp or use cookies for authentication',
     'unknown': 'An unknown error occurred during download'
 }
 
@@ -75,47 +79,114 @@ def validate_youtube_url(url: str) -> bool:
 
 def _parse_download_error(stderr: str) -> str:
     """
-    Parse yt-dlp error message and return user-friendly error
+    Parse yt-dlp error message and return user-friendly error with detailed diagnostics
     
     Args:
         stderr: Standard error output from yt-dlp
         
     Returns:
-        User-friendly error message
+        User-friendly error message with specific cause
     """
     stderr_lower = stderr.lower()
     
-    # Check for specific error patterns
-    if 'video unavailable' in stderr_lower or 'this video is unavailable' in stderr_lower:
+    # Log full error for debugging
+    logger.debug(f"Full error output: {stderr}")
+    
+    # Check for specific error patterns (ordered by specificity)
+    
+    # DRM and encryption errors
+    if 'drm' in stderr_lower or 'encrypted' in stderr_lower or 'widevine' in stderr_lower:
+        logger.error("🔒 DRM-protected content detected")
+        return ERROR_MESSAGES['drm']
+    
+    # API and quota errors
+    elif 'quota exceeded' in stderr_lower or 'quota has been exceeded' in stderr_lower:
+        logger.error("📊 API quota exceeded")
+        return ERROR_MESSAGES['quota_exceeded']
+    elif 'too many requests' in stderr_lower or 'http error 429' in stderr_lower:
+        logger.error("⏱️ Rate limit hit (HTTP 429)")
+        return ERROR_MESSAGES['quota_exceeded']
+    
+    # Bot detection and access issues
+    elif 'bot' in stderr_lower or 'automated' in stderr_lower or 'suspicious' in stderr_lower:
+        logger.error("🤖 Bot detection triggered")
+        return ERROR_MESSAGES['bot_detected']
+    elif 'sign in' in stderr_lower and 'confirm' in stderr_lower:
+        logger.error("🔐 Sign-in required (likely age-restricted)")
+        return ERROR_MESSAGES['age_restricted']
+    
+    # Video availability errors
+    elif 'video unavailable' in stderr_lower or 'this video is unavailable' in stderr_lower:
+        logger.error("❌ Video unavailable")
         return ERROR_MESSAGES['unavailable']
     elif 'private video' in stderr_lower or 'this video is private' in stderr_lower:
+        logger.error("🔒 Private video")
         return ERROR_MESSAGES['private']
-    elif 'not available in your country' in stderr_lower or 'geo restricted' in stderr_lower:
+    elif 'http error 404' in stderr_lower or 'not found' in stderr_lower:
+        logger.error("❌ Video not found (HTTP 404)")
+        return ERROR_MESSAGES['unavailable']
+    
+    # Region and restriction errors
+    elif 'not available in your country' in stderr_lower or 'geo restricted' in stderr_lower or 'georestrict' in stderr_lower:
+        logger.error("🌍 Geographic restriction detected")
         return ERROR_MESSAGES['region_blocked']
-    elif 'sign in to confirm your age' in stderr_lower or 'age restricted' in stderr_lower:
-        return ERROR_MESSAGES['age_restricted']
-    elif 'copyright' in stderr_lower or 'taken down' in stderr_lower:
+    elif 'blocked' in stderr_lower and 'country' in stderr_lower:
+        logger.error("🌍 Country-based block detected")
+        return ERROR_MESSAGES['region_blocked']
+    
+    # Copyright and legal issues
+    elif 'copyright' in stderr_lower or 'taken down' in stderr_lower or 'removed' in stderr_lower:
+        logger.error("⚖️ Copyright or legal issue")
         return ERROR_MESSAGES['copyright']
-    elif 'live event' in stderr_lower or 'is a live stream' in stderr_lower:
+    
+    # Live stream errors
+    elif 'live event' in stderr_lower or 'is a live stream' in stderr_lower or 'live video' in stderr_lower:
+        logger.error("📡 Live stream detected")
         return ERROR_MESSAGES['live']
-    elif 'unable to download' in stderr_lower and 'format' in stderr_lower:
+    
+    # Format and stream errors
+    elif 'no video formats' in stderr_lower or 'no suitable formats' in stderr_lower:
+        logger.error("📹 No suitable video formats available")
         return ERROR_MESSAGES['format']
-    elif 'network' in stderr_lower or 'connection' in stderr_lower:
+    elif 'unable to download' in stderr_lower and 'format' in stderr_lower:
+        logger.error("📹 Format download issue")
+        return ERROR_MESSAGES['format']
+    elif 'requested format not available' in stderr_lower:
+        logger.error("📹 Requested format not available")
+        return ERROR_MESSAGES['format']
+    
+    # Network errors
+    elif 'network' in stderr_lower or 'connection' in stderr_lower or 'resolve host' in stderr_lower:
+        logger.error("🌐 Network connectivity issue")
         return ERROR_MESSAGES['network']
     elif 'timeout' in stderr_lower or 'timed out' in stderr_lower:
+        logger.error("⏱️ Network timeout")
         return ERROR_MESSAGES['timeout']
+    
+    # HTTP errors
     elif 'http error 403' in stderr_lower or 'forbidden' in stderr_lower:
+        logger.error("🚫 HTTP 403 Forbidden - Access denied")
         # HTTP 403 can be caused by various issues
-        return "Access forbidden. This may be due to region restrictions, age restrictions, or temporary YouTube blocks. Try updating yt-dlp with: pip install --upgrade yt-dlp"
-    elif 'http error 404' in stderr_lower:
-        return ERROR_MESSAGES['unavailable']
-    elif 'http error 429' in stderr_lower:
-        return "Too many requests. Please wait a few minutes before trying again"
+        return "Access forbidden (HTTP 403). Possible causes: region restrictions, age restrictions, temporary YouTube blocks, or bot detection. Try: 1) Update yt-dlp: pip install --upgrade yt-dlp, 2) Use cookies for authentication, 3) Wait and try again later"
+    elif 'http error 5' in stderr_lower:
+        logger.error("🔧 YouTube server error (HTTP 5xx)")
+        return "YouTube server error. This is temporary. Please try again in a few minutes"
+    
+    # Player errors
+    elif 'player' in stderr_lower and ('error' in stderr_lower or 'failed' in stderr_lower):
+        logger.error("🎮 YouTube player error")
+        return "YouTube player error. Try updating yt-dlp or using different player client options"
+    
+    # Generic errors
     else:
         # Return first error line if available
-        error_lines = [line.strip() for line in stderr.split('\n') if 'error' in line.lower()]
+        error_lines = [line.strip() for line in stderr.split('\n') if 'error' in line.lower() and line.strip()]
         if error_lines:
-            return f"Download error: {error_lines[0][:200]}"  # Limit length
+            first_error = error_lines[0][:250]  # Increased from 200
+            logger.error(f"❓ Unclassified error: {first_error}")
+            return f"Download error: {first_error}"
+        
+        logger.error("❓ Unknown error with no specific error message")
         return ERROR_MESSAGES['unknown']
 
 def download_youtube(
@@ -126,7 +197,7 @@ def download_youtube(
     max_retries: int = 3
 ) -> Tuple[bool, Optional[str]]:
     """
-    Download YouTube video using yt-dlp with robust fallback options
+    Download YouTube video using yt-dlp with robust fallback options and detailed diagnostics
     
     Args:
         url: YouTube URL
@@ -165,6 +236,49 @@ def download_youtube(
             return False, error_msg
         
         logger.info(f"✓ Dependencies verified - yt-dlp: {versions.get('yt-dlp')}, ffmpeg: {versions.get('ffmpeg')}")
+        
+        # Pre-download diagnostics: Get video info to detect issues early
+        logger.info("🔍 Pre-download diagnostics: Fetching video information...")
+        if progress_callback:
+            progress_callback(0, "Checking video availability...")
+        
+        video_info = get_video_info(url)
+        if video_info:
+            # Log important video details
+            title = video_info.get('title', 'Unknown')
+            duration = video_info.get('duration', 0)
+            uploader = video_info.get('uploader', 'Unknown')
+            
+            logger.info(f"📺 Video Title: {title}")
+            logger.info(f"⏱️ Duration: {duration}s ({duration//60}m {duration%60}s)")
+            logger.info(f"👤 Uploader: {uploader}")
+            
+            # Check for potential issues
+            if video_info.get('is_live'):
+                logger.warning("⚠️ This is a live stream")
+            if video_info.get('age_limit', 0) > 0:
+                age_limit = video_info.get('age_limit')
+                logger.warning(f"⚠️ Age-restricted content (age limit: {age_limit})")
+                if not cookies_file:
+                    logger.warning("💡 Tip: Age-restricted videos may require cookies. Use --cookies option")
+            
+            # Check for DRM
+            if video_info.get('_has_drm') or video_info.get('is_drm_protected'):
+                error_msg = ERROR_MESSAGES['drm']
+                logger.error(f"🔒 {error_msg}")
+                return False, error_msg
+            
+            # Check format availability
+            formats = video_info.get('formats', [])
+            if not formats:
+                error_msg = ERROR_MESSAGES['format']
+                logger.error(f"📹 {error_msg}")
+                return False, error_msg
+            
+            logger.info(f"✓ Video info retrieved successfully, {len(formats)} formats available")
+        else:
+            logger.warning("⚠️ Could not fetch video info, will attempt download anyway")
+            logger.warning("💡 This may indicate the video is unavailable, region-blocked, or requires authentication")
         
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -401,39 +515,61 @@ def _download_fallback(
     progress_callback: Optional[Callable[[int, str], None]] = None
 ) -> Tuple[bool, Optional[str]]:
     """
-    Fallback download method with simpler options
+    Enhanced fallback download method with multiple strategies
     
-    This method tries different player clients and simpler format options
-    when the main download fails.
+    This method tries different player clients, format options, and quality levels
+    when the main download fails. It implements a comprehensive fallback chain.
     """
-    logger.info("=== Attempting fallback download method ===")
+    logger.info("=== Attempting enhanced fallback download methods ===")
     
     if progress_callback:
-        progress_callback(0, "Retrying with fallback method...")
+        progress_callback(0, "Trying alternative download methods...")
     
     output_template = str(output_path.with_suffix(''))
     
-    # Try different fallback strategies
+    # Enhanced fallback strategies with more options
     fallback_strategies = [
         {
             'name': 'Android client with best format',
             'args': ['--extractor-args', 'youtube:player_client=android'],
-            'format': 'best'
-        },
-        {
-            'name': 'iOS client with mp4 format',
-            'args': ['--extractor-args', 'youtube:player_client=ios'],
             'format': 'best[ext=mp4]/best'
         },
         {
-            'name': 'Web client with lower quality',
-            'args': ['--extractor-args', 'youtube:player_client=web'],
-            'format': 'worst'
+            'name': 'iOS client with standard quality',
+            'args': ['--extractor-args', 'youtube:player_client=ios'],
+            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best'
+        },
+        {
+            'name': 'Web client with embedded player',
+            'args': ['--extractor-args', 'youtube:player_client=web_embedded'],
+            'format': 'best[ext=mp4]/best'
+        },
+        {
+            'name': 'Android embedded client',
+            'args': ['--extractor-args', 'youtube:player_client=android_embedded'],
+            'format': 'best'
+        },
+        {
+            'name': 'TV client (smart TV interface)',
+            'args': ['--extractor-args', 'youtube:player_client=tv'],
+            'format': 'best[ext=mp4]/best'
+        },
+        {
+            'name': 'Mobile web with lower quality',
+            'args': ['--extractor-args', 'youtube:player_client=mweb'],
+            'format': 'best[height<=480]/worst'
+        },
+        {
+            'name': 'Generic best available (no client preference)',
+            'args': [],
+            'format': 'b/best'
         }
     ]
     
-    for strategy in fallback_strategies:
-        logger.info(f"Trying fallback strategy: {strategy['name']}")
+    for idx, strategy in enumerate(fallback_strategies, 1):
+        logger.info(f"🔄 Fallback strategy {idx}/{len(fallback_strategies)}: {strategy['name']}")
+        if progress_callback:
+            progress_callback(0, f"Fallback method {idx}/{len(fallback_strategies)}: {strategy['name']}")
         
         cmd = [
             'yt-dlp',
@@ -443,6 +579,8 @@ def _download_fallback(
             *strategy['args'],
             '-o', f'{output_template}.%(ext)s',
             '--retries', '5',
+            '--fragment-retries', '5',
+            '--skip-unavailable-fragments',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         ]
         
@@ -521,13 +659,14 @@ def _download_fallback(
     logger.error("  3. Try with cookies for age-restricted videos")
     return False, error_msg
 
-def _validate_video_file(file_path: Path, min_size_mb: float = 0.1) -> Tuple[bool, Optional[str]]:
+def _validate_video_file(file_path: Path, min_size_mb: float = 0.1, expected_duration: Optional[int] = None) -> Tuple[bool, Optional[str]]:
     """
-    Validate that a video file is not empty and has valid content
+    Enhanced validation that video file is not empty and has valid content
     
     Args:
         file_path: Path to video file
         min_size_mb: Minimum file size in MB (default 0.1 MB = 100 KB)
+        expected_duration: Expected video duration in seconds (optional)
     
     Returns:
         (is_valid, error_message)
@@ -541,19 +680,27 @@ def _validate_video_file(file_path: Path, min_size_mb: float = 0.1) -> Tuple[boo
         file_size_mb = file_size / 1024 / 1024
         
         if file_size == 0:
-            return False, "Downloaded file is empty (0 bytes)"
+            logger.error("❌ File is empty (0 bytes) - Possible causes:")
+            logger.error("   1. Network interruption during download")
+            logger.error("   2. Region restriction or DRM protection")
+            logger.error("   3. YouTube API quota exceeded")
+            logger.error("   4. Invalid video format or stream unavailable")
+            return False, "Downloaded file is empty (0 bytes). Possible causes: network error, region restriction, DRM, or API quota exceeded."
         
         if file_size_mb < min_size_mb:
-            return False, f"Downloaded file is too small ({file_size_mb:.2f} MB). Minimum expected: {min_size_mb} MB"
+            logger.error(f"❌ File too small ({file_size_mb:.2f} MB, minimum: {min_size_mb} MB)")
+            logger.error("   This suggests incomplete download or corrupted file")
+            return False, f"Downloaded file is too small ({file_size_mb:.2f} MB). Minimum expected: {min_size_mb} MB. Possible incomplete download."
         
-        # Check if file is a valid video by trying to read metadata with ffprobe
-        logger.debug(f"Validating video file with ffprobe: {file_path}")
+        logger.debug(f"✓ File size check passed: {file_size_mb:.2f} MB")
+        
+        # Enhanced validation with ffprobe - check video stream, audio stream, and duration
+        logger.debug(f"🔍 Deep validation with ffprobe: {file_path}")
         cmd = [
             'ffprobe',
             '-v', 'error',
-            '-select_streams', 'v:0',
-            '-show_entries', 'stream=codec_type,duration',
-            '-of', 'default=noprint_wrappers=1',
+            '-show_entries', 'stream=codec_type,codec_name,duration:format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=0',
             str(file_path)
         ]
         
@@ -565,25 +712,60 @@ def _validate_video_file(file_path: Path, min_size_mb: float = 0.1) -> Tuple[boo
         )
         
         if result.returncode != 0:
+            logger.error(f"❌ ffprobe validation failed: {result.stderr[:200]}")
             return False, f"File appears corrupted or not a valid video format. ffprobe error: {result.stderr[:200]}"
         
+        output = result.stdout.lower()
+        
         # Check if file has video stream
-        if 'codec_type=video' not in result.stdout:
-            return False, "File does not contain a video stream"
+        if 'codec_type=video' not in output:
+            logger.error("❌ No video stream found in file")
+            return False, "File does not contain a video stream. May be corrupted or incomplete."
+        
+        logger.debug("✓ Video stream found")
+        
+        # Check if file has audio stream (warning only, not failure)
+        if 'codec_type=audio' not in output:
+            logger.warning("⚠️ No audio stream found in video file (video-only)")
+        else:
+            logger.debug("✓ Audio stream found")
+        
+        # Extract and validate duration if expected
+        duration_match = re.search(r'duration=(\d+\.?\d*)', output)
+        if duration_match:
+            actual_duration = float(duration_match.group(1))
+            logger.debug(f"✓ Video duration: {actual_duration:.1f}s ({actual_duration/60:.1f}m)")
+            
+            # If expected duration is provided, check if actual is reasonably close
+            if expected_duration and expected_duration > 0:
+                duration_diff = abs(actual_duration - expected_duration)
+                duration_ratio = duration_diff / expected_duration
+                
+                if duration_ratio > 0.1:  # More than 10% difference
+                    logger.warning(f"⚠️ Duration mismatch: expected {expected_duration}s, got {actual_duration:.1f}s")
+                    logger.warning(f"   Difference: {duration_diff:.1f}s ({duration_ratio*100:.1f}%)")
+                    logger.warning("   This may indicate incomplete download or corrupted file")
+                    return False, f"Video duration mismatch. Expected {expected_duration}s, got {actual_duration:.1f}s. Possible incomplete download."
+                else:
+                    logger.debug(f"✓ Duration validation passed (diff: {duration_diff:.1f}s, {duration_ratio*100:.1f}%)")
+        else:
+            logger.warning("⚠️ Could not extract duration from video file")
         
         logger.debug(f"✓ Video file validation passed: {file_size_mb:.2f} MB")
         return True, None
         
     except subprocess.TimeoutExpired:
-        logger.warning(f"Video validation timed out for {file_path}")
+        logger.warning(f"⏱️ Video validation timed out for {file_path}")
         # Don't fail on timeout, consider file valid if it exists and has size
-        if file_path.exists() and file_path.stat().st_size > 0:
+        if file_path.exists() and file_path.stat().st_size > min_size_mb * 1024 * 1024:
+            logger.warning("   Accepting file despite timeout (has valid size)")
             return True, None
         return False, "Video validation timed out and file appears invalid"
     except Exception as e:
-        logger.warning(f"Error during video validation: {e}")
+        logger.warning(f"❌ Error during video validation: {e}")
         # Don't fail on validation errors if file exists and has reasonable size
         if file_path.exists() and file_path.stat().st_size > min_size_mb * 1024 * 1024:
+            logger.warning(f"   Accepting file despite validation error (has valid size)")
             return True, None
         return False, f"Video validation error: {str(e)}"
 
