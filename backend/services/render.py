@@ -7,7 +7,7 @@ from services.ffmpeg import (
     extract_segment, extract_audio, crop_and_scale_center,
     mux_video_audio, burn_subtitles
 )
-from services.reframe import reframe_video_with_tracking
+from services.reframe import reframe_video_with_tracking, reframe_video_smart
 from config import OUTPUT_WIDTH, OUTPUT_HEIGHT
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ def render_clip(
     start_sec: float,
     end_sec: float,
     face_tracking: bool = False,
+    smart_crop: bool = False,
     captions: bool = False,
     transcript_snippet: str = "",
     watermark_text: str = "",
@@ -55,6 +56,7 @@ def render_clip(
         start_sec: Start time in seconds
         end_sec: End time in seconds
         face_tracking: Enable face tracking and reframing
+        smart_crop: Enable smart cropping (solo/duo_switch/duo_split modes)
         captions: Burn in captions
         transcript_snippet: Text for captions
     
@@ -65,13 +67,63 @@ def render_clip(
     try:
         duration = end_sec - start_sec
         
-        logger.info(f"Rendering clip: {start_sec:.2f}s - {end_sec:.2f}s (face_tracking={face_tracking}, captions={captions})")
+        logger.info(f"Rendering clip: {start_sec:.2f}s - {end_sec:.2f}s (face_tracking={face_tracking}, smart_crop={smart_crop}, captions={captions})")
         
         # Create temp directory for intermediate files
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             
-            if face_tracking:
+            if smart_crop:
+                # Extract segment first (for smart cropping processing)
+                segment_path = tmpdir_path / "segment.mp4"
+                if not extract_segment(video_path, segment_path, start_sec, duration):
+                    logger.error("Failed to extract segment")
+                    return False
+                
+                # Smart reframe with automatic mode detection
+                video_no_audio = tmpdir_path / "video_no_audio.mp4"
+                if not reframe_video_smart(
+                    segment_path,
+                    video_no_audio,
+                    OUTPUT_WIDTH,
+                    OUTPUT_HEIGHT,
+                    0,  # Already extracted segment
+                    duration
+                ):
+                    logger.error("Failed to smart reframe video")
+                    return False
+                
+                # Extract audio from original segment
+                audio_path = tmpdir_path / "audio.aac"
+                if not extract_audio(video_path, audio_path, start_sec, duration):
+                    logger.error("Failed to extract audio")
+                    return False
+                
+                # Mux video and audio
+                if captions and transcript_snippet:
+                    # Mux first, then burn captions
+                    muxed_path = tmpdir_path / "muxed.mp4"
+                    if not mux_video_audio(video_no_audio, audio_path, muxed_path):
+                        logger.error("Failed to mux video and audio")
+                        return False
+                    
+                    # Generate SRT
+                    srt_path = tmpdir_path / "captions.srt"
+                    if not generate_srt(transcript_snippet, 0, duration, srt_path):
+                        logger.error("Failed to generate SRT")
+                        return False
+                    
+                    # Burn subtitles
+                    if not burn_subtitles(muxed_path, srt_path, output_path):
+                        logger.error("Failed to burn subtitles")
+                        return False
+                else:
+                    # Just mux
+                    if not mux_video_audio(video_no_audio, audio_path, output_path):
+                        logger.error("Failed to mux video and audio")
+                        return False
+            
+            elif face_tracking:
                 # Extract segment first (for face tracking processing)
                 segment_path = tmpdir_path / "segment.mp4"
                 if not extract_segment(video_path, segment_path, start_sec, duration):
