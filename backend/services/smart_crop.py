@@ -28,7 +28,10 @@ class SmartCropper:
         
         # Calculate crop dimensions for 9:16 aspect ratio
         target_aspect = output_width / output_height
-        self.crop_width = int(video_height * target_aspect)
+        desired_crop_width = int(video_height * target_aspect)
+        
+        # Ensure crop width doesn't exceed video width
+        self.crop_width = min(desired_crop_width, video_width)
         self.crop_height = video_height
         
         # Smooth tracking with EMA (Exponential Moving Average)

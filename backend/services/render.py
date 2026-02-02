@@ -35,6 +35,57 @@ def format_srt_time(seconds: float) -> str:
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
+
+def _mux_and_add_captions(
+    video_no_audio: Path,
+    audio_path: Path,
+    output_path: Path,
+    captions: bool,
+    transcript_snippet: str,
+    duration: float,
+    tmpdir_path: Path
+) -> bool:
+    """
+    Helper function to mux video/audio and optionally add captions
+    
+    Args:
+        video_no_audio: Path to video without audio
+        audio_path: Path to audio file
+        output_path: Final output path
+        captions: Whether to add captions
+        transcript_snippet: Caption text
+        duration: Video duration in seconds
+        tmpdir_path: Temporary directory path
+    
+    Returns:
+        True if successful
+    """
+    if captions and transcript_snippet:
+        # Mux first, then burn captions
+        muxed_path = tmpdir_path / "muxed.mp4"
+        if not mux_video_audio(video_no_audio, audio_path, muxed_path):
+            logger.error("Failed to mux video and audio")
+            return False
+        
+        # Generate SRT
+        srt_path = tmpdir_path / "captions.srt"
+        if not generate_srt(transcript_snippet, 0, duration, srt_path):
+            logger.error("Failed to generate SRT")
+            return False
+        
+        # Burn subtitles
+        if not burn_subtitles(muxed_path, srt_path, output_path):
+            logger.error("Failed to burn subtitles")
+            return False
+    else:
+        # Just mux
+        if not mux_video_audio(video_no_audio, audio_path, output_path):
+            logger.error("Failed to mux video and audio")
+            return False
+    
+    return True
+
+
 def render_clip(
     video_path: Path,
     output_path: Path,
@@ -99,29 +150,12 @@ def render_clip(
                     logger.error("Failed to extract audio")
                     return False
                 
-                # Mux video and audio
-                if captions and transcript_snippet:
-                    # Mux first, then burn captions
-                    muxed_path = tmpdir_path / "muxed.mp4"
-                    if not mux_video_audio(video_no_audio, audio_path, muxed_path):
-                        logger.error("Failed to mux video and audio")
-                        return False
-                    
-                    # Generate SRT
-                    srt_path = tmpdir_path / "captions.srt"
-                    if not generate_srt(transcript_snippet, 0, duration, srt_path):
-                        logger.error("Failed to generate SRT")
-                        return False
-                    
-                    # Burn subtitles
-                    if not burn_subtitles(muxed_path, srt_path, output_path):
-                        logger.error("Failed to burn subtitles")
-                        return False
-                else:
-                    # Just mux
-                    if not mux_video_audio(video_no_audio, audio_path, output_path):
-                        logger.error("Failed to mux video and audio")
-                        return False
+                # Mux and add captions if needed
+                if not _mux_and_add_captions(
+                    video_no_audio, audio_path, output_path,
+                    captions, transcript_snippet, duration, tmpdir_path
+                ):
+                    return False
             
             elif face_tracking:
                 # Extract segment first (for face tracking processing)
@@ -149,29 +183,12 @@ def render_clip(
                     logger.error("Failed to extract audio")
                     return False
                 
-                # Mux video and audio
-                if captions and transcript_snippet:
-                    # Mux first, then burn captions
-                    muxed_path = tmpdir_path / "muxed.mp4"
-                    if not mux_video_audio(video_no_audio, audio_path, muxed_path):
-                        logger.error("Failed to mux video and audio")
-                        return False
-                    
-                    # Generate SRT
-                    srt_path = tmpdir_path / "captions.srt"
-                    if not generate_srt(transcript_snippet, 0, duration, srt_path):
-                        logger.error("Failed to generate SRT")
-                        return False
-                    
-                    # Burn subtitles
-                    if not burn_subtitles(muxed_path, srt_path, output_path):
-                        logger.error("Failed to burn subtitles")
-                        return False
-                else:
-                    # Just mux
-                    if not mux_video_audio(video_no_audio, audio_path, output_path):
-                        logger.error("Failed to mux video and audio")
-                        return False
+                # Mux and add captions if needed
+                if not _mux_and_add_captions(
+                    video_no_audio, audio_path, output_path,
+                    captions, transcript_snippet, duration, tmpdir_path
+                ):
+                    return False
             else:
                 # Simple center crop and scale (faster)
                 # Extract segment

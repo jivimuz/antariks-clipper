@@ -101,7 +101,7 @@ class FaceTracker:
                 h, w, _ = frame.shape
                 
                 # Match face landmarks to tracked faces by proximity
-                for i, landmarks in enumerate(results.multi_face_landmarks[:len(faces)]):
+                for landmarks in results.multi_face_landmarks:
                     # Get mouth landmarks
                     upper_lip = landmarks.landmark[13]
                     lower_lip = landmarks.landmark[14]
