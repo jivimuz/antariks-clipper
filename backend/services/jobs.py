@@ -81,7 +81,7 @@ def process_job(job_id: str):
         if job['source_type'] == 'youtube':
             raw_path = raw_path_youtube
             
-            # Progress callback
+            # Progress callback to update job progress (maps download 0-100% to job 10-30%)
             def update_download_progress(percent, message):
                 db.update_job(job_id, progress=10 + int(percent * 0.2), step=f'download: {message}')
             

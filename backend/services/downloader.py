@@ -22,7 +22,8 @@ def check_dependencies() -> Tuple[bool, list, dict]:
             result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
             match = re.search(r'ffmpeg version (\S+)', result.stdout)
             versions['ffmpeg'] = match.group(1) if match else 'unknown'
-        except:
+        except Exception as e:
+            logger.debug(f"Could not get ffmpeg version: {e}")
             versions['ffmpeg'] = 'unknown'
     
     # Check yt-dlp
@@ -32,7 +33,8 @@ def check_dependencies() -> Tuple[bool, list, dict]:
         try:
             result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=10)
             versions['yt-dlp'] = result.stdout.strip()
-        except:
+        except Exception as e:
+            logger.debug(f"Could not get yt-dlp version: {e}")
             versions['yt-dlp'] = 'unknown'
     
     return len(missing) == 0, missing, versions
@@ -155,7 +157,8 @@ def download_youtube(
                     if percent != last_percent and progress_callback:
                         progress_callback(percent, f"Downloading... {percent}%")
                         last_percent = percent
-                except:
+                except (ValueError, TypeError):
+                    # Ignore lines that don't contain valid progress percentages
                     pass
         
         stderr = process.stderr.read()
@@ -275,6 +278,7 @@ def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
             '-y',
             str(output_path)
         ]
+        # 30 minute timeout for large video files (HD/4K content)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         
         if result.returncode == 0 and output_path.exists():
