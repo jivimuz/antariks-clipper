@@ -54,7 +54,7 @@ def download_youtube(
     output_path: Path,
     progress_callback: Optional[Callable[[int, str], None]] = None,
     cookies_file: Optional[Path] = None
-) -> bool:
+) -> Tuple[bool, Optional[str]]:
     """
     Download YouTube video using yt-dlp with robust fallback options
     
@@ -65,20 +65,20 @@ def download_youtube(
         cookies_file: Optional path to cookies.txt for authenticated downloads
     
     Returns:
-        True if successful, False otherwise
+        (success, error_message)
     """
     try:
         # Validate URL
         if not validate_youtube_url(url):
             logger.error(f"Invalid YouTube URL: {url}")
-            return False
+            return False, "Invalid YouTube URL"
         
         # Check dependencies
         deps_ok, missing, versions = check_dependencies()
         if not deps_ok:
             logger.error(f"Missing dependencies: {', '.join(missing)}. Please install them first.")
             logger.error("Install with: pip install yt-dlp (or brew install yt-dlp)")
-            return False
+            return False, f"Missing dependencies: {', '.join(missing)}"
         
         logger.info(f"Dependencies OK - yt-dlp: {versions.get('yt-dlp')}, ffmpeg: {versions.get('ffmpeg')}")
         
@@ -101,9 +101,10 @@ def download_youtube(
             'yt-dlp',
             '--no-warnings',
             '--no-check-certificate',
-            # Format: prefer mp4, fallback to best available
-            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best',
+            # Format: allow any best available, merge to mp4
+            '-f', 'bestvideo+bestaudio/best',
             '--merge-output-format', 'mp4',
+            '--format-sort', 'res,ext:mp4:m4a',
             # Use multiple clients for better compatibility
             '--extractor-args', 'youtube:player_client=ios,web',
             # Retry settings
@@ -177,7 +178,7 @@ def download_youtube(
             logger.info(f"Download complete: {output_path} ({file_size / 1024 / 1024:.1f} MB)")
             if progress_callback:
                 progress_callback(100, "Download complete!")
-            return True
+            return True, None
         
         # Check if file with different extension exists
         for ext in ['.mp4', '.mkv', '.webm']:
@@ -187,26 +188,26 @@ def download_youtube(
                     # Convert to mp4
                     if _convert_to_mp4(alt_path, output_path):
                         alt_path.unlink()
-                        return True
+                        return True, None
                 else:
-                    return True
+                    return True, None
         
         logger.error(f"Download completed but output file not found: {output_path}")
-        return False
+        return False, "Download completed but output file not found"
         
     except subprocess.TimeoutExpired:
         logger.error("Download timeout")
-        return False
+        return False, "Download timeout"
     except Exception as e:
         logger.error(f"Download error: {e}", exc_info=True)
-        return False
+        return False, f"Download error: {str(e)}"
 
 def _download_fallback(
     url: str, 
     output_path: Path,
     cookies_file: Optional[Path] = None,
     progress_callback: Optional[Callable[[int, str], None]] = None
-) -> bool:
+) -> Tuple[bool, Optional[str]]:
     """Fallback download method with simpler options"""
     logger.info("Trying fallback download method...")
     
@@ -218,7 +219,7 @@ def _download_fallback(
     # Simpler command for fallback
     cmd = [
         'yt-dlp',
-        '-f', 'best[ext=mp4]/best',
+        '-f', 'best',
         '--no-warnings',
         '--no-check-certificate',
         '--extractor-args', 'youtube:player_client=android',
@@ -243,7 +244,7 @@ def _download_fallback(
             logger.info("Fallback download successful")
             if progress_callback:
                 progress_callback(100, "Download complete (fallback)")
-            return True
+            return True, None
         
         # Check for file with different extension
         for ext in ['.mp4', '.mkv', '.webm']:
@@ -252,16 +253,16 @@ def _download_fallback(
                 if ext != '.mp4':
                     if _convert_to_mp4(alt_path, output_path):
                         alt_path.unlink()
-                        return True
+                        return True, None
                 else:
-                    return True
+                    return True, None
         
         logger.error(f"Fallback also failed: {result.stderr}")
-        return False
+        return False, f"Fallback download failed: {result.stderr.strip()}"
         
     except Exception as e:
         logger.error(f"Fallback error: {e}")
-        return False
+        return False, f"Fallback error: {str(e)}"
 
 def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
     """Convert video to mp4 using ffmpeg"""

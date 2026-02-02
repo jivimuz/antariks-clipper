@@ -89,7 +89,7 @@ def process_job(job_id: str):
                 logger.info(f"Raw file exists, skipping download: {raw_path}")
             else:
                 logger.info(f"Starting YouTube download: {job['source_url']}")
-                success = download_youtube(
+                success, error_message = download_youtube(
                     job['source_url'], 
                     raw_path,
                     progress_callback=update_download_progress
@@ -98,7 +98,7 @@ def process_job(job_id: str):
                     db.update_job(
                         job_id, 
                         status='failed', 
-                        error='YouTube download failed. Please check if the URL is valid and accessible.'
+                        error=f"YouTube download failed: {error_message or 'Unknown error'}"
                     )
                     return
         else:
