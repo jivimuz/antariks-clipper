@@ -4,12 +4,24 @@ Auto-generate viral highlight clips from YouTube videos or manual uploads. Outpu
 
 ## Features
 
+### Core Features
 - 🎬 **Multiple Input Sources**: YouTube URL or manual video upload
-- 🤖 **AI-Powered Highlights**: Automatic clip generation with smart scoring
+- 🤖 **Enhanced AI-Powered Highlights**: Advanced clip generation with smart scoring
+  - **Dynamic clip detection** for long videos (2+ hours)
+  - **Adaptive clip count** based on video duration (5-50 clips automatically)
+  - **Variable clip duration** (15-60 seconds based on content)
+  - **Intelligent keyword detection** with categories (importance, revelation, summary, teaching)
 - 📝 **Transcription**: Faster-whisper for accurate speech-to-text
 - 🎯 **Face Tracking**: Active speaker detection and auto-reframe (optional)
 - 📱 **Vertical Output**: 1080x1920 (9:16) format for social media
 - 💬 **Captions**: Burn-in subtitle support (optional)
+
+### Advanced Features
+- 🔄 **Regenerate Highlights**: Customize clip count and regenerate anytime
+- 🎚️ **Filter & Sort**: Filter by score, sort by score/duration/timeline
+- ✅ **Batch Selection**: Select multiple clips for batch rendering
+- 📊 **Rich Metadata**: Each clip includes keyword categories and content analysis
+- 📋 **Preview Interface**: Preview clips before rendering
 - 🚀 **Simple Setup**: No Docker, Redis, or complex dependencies
 
 ## Quick Start
@@ -70,9 +82,31 @@ Frontend will be available at http://localhost:3000
 1. Open http://localhost:3000
 2. Choose YouTube URL or Upload video
 3. Submit and wait for processing
-4. View generated highlight clips
-5. Render clips with optional face tracking or captions
-6. Download vertical 9:16 videos ready for social media
+4. View generated highlight clips (automatically generates 5-50 clips based on video length)
+5. Use filters and sorting to find the best clips:
+   - **Filter by score**: Use the slider to show only high-scoring clips
+   - **Sort options**: By score, duration, or timeline position
+6. Select clips for rendering:
+   - Click checkboxes to select individual clips
+   - Use "Select All" to select all visible clips
+   - Click "Render N Clips" to batch render selected clips
+7. Preview clips before rendering (click any clip to preview)
+8. Render clips with optional face tracking, smart crop, or captions
+9. Download vertical 9:16 videos ready for social media
+
+### Advanced Usage
+
+#### Regenerate Highlights
+If the auto-generated clips aren't perfect, you can regenerate them:
+1. Click "Regenerate Highlights" button
+2. Optionally specify custom clip count (or leave empty for auto)
+3. System will delete old clips and generate new ones
+
+#### Batch Create Custom Clips
+For manual control, use the "Batch Create Clips" section:
+1. Enter start/end times manually
+2. Add multiple rows for multiple clips
+3. Save all clips at once
 
 ## Technology Stack
 
@@ -89,6 +123,56 @@ Frontend will be available at http://localhost:3000
 - **Next.js 15** - React framework with App Router
 - **TypeScript** - Type-safe development
 - **Tailwind CSS** - Utility-first styling
+
+## Enhanced Highlight Detection Algorithm
+
+The system uses an advanced multi-factor scoring algorithm to identify the best clips:
+
+### Scoring Factors (100 points max)
+
+1. **Hook Keywords (35 points)** - Weighted by category:
+   - **Importance**: "ini penting", "kuncinya", "harus tahu", "important", "crucial"
+   - **Revelation**: "gila", "ternyata", "rahasia", "secret", "amazing", "shocking"
+   - **Summary**: "jadi intinya", "kesimpulannya", "in conclusion", "to summarize"
+   - **Teaching**: "cara", "tutorial", "how to", "step by step", "pro tip"
+
+2. **Content Quality (25 points)**:
+   - Vocabulary diversity (unique word ratio)
+   - Optimal word count (50-150 words sweet spot)
+   - Question detection (engagement indicator)
+
+3. **Duration Flexibility (25 points)**:
+   - Sweet spot: 20-45 seconds (25 points)
+   - Good range: 15-60 seconds (20 points)
+   - Dynamically adjusts to content, not fixed 35 seconds
+
+4. **Position Diversity (15 points)**:
+   - Favors content from different parts of the video
+   - Strong beginning/ending segments (memorable moments)
+   - Ensures clips span the entire video timeline
+
+### Adaptive Algorithm for Long Videos
+
+- **Dynamic clip count**: Automatically scales from 5 to 50 clips based on video duration
+- **Efficient processing**: Uses adaptive stepping (3x faster) for videos > 1 hour
+- **Non-overlapping**: Maintains minimum 10-second gap between clips
+- **Timeline coverage**: Ensures clips are distributed throughout the video
+
+### Testing
+
+Run the comprehensive test suite:
+```bash
+cd backend
+python test_highlight_enhanced.py
+```
+
+Tests include:
+- Dynamic clip count calculation
+- Keyword detection and categorization
+- Scoring algorithm validation
+- Short video (10 min) highlight generation
+- Long video (2+ hours) highlight generation with adaptive algorithm
+- Custom clip count parameters
 
 ## Project Structure
 
@@ -130,27 +214,62 @@ Frontend will be available at http://localhost:3000
 - `GET /api/jobs` - List all jobs
 - `GET /api/jobs/{job_id}` - Get job details
 - `GET /api/jobs/{job_id}/clips` - Get job clips
+- `POST /api/jobs/{job_id}/retry` - Retry failed job
+- `DELETE /api/jobs/{job_id}` - Delete job and all associated data
+- `POST /api/jobs/{job_id}/clips` - Batch create custom clips
+- **`POST /api/jobs/{job_id}/regenerate-highlights`** - ✨ NEW: Regenerate highlight clips with custom parameters
+
+### Clips
+- **`DELETE /api/clips/{clip_id}`** - ✨ NEW: Delete individual clip
+- `GET /api/clips/{clip_id}/preview` - Preview clip stream
+- `GET /api/clips/{clip_id}/preview-frame` - Get preview thumbnail
 
 ### Renders
 - `POST /api/clips/{clip_id}/render` - Create render job
 - `GET /api/renders/{render_id}` - Get render status
 - `GET /api/renders/{render_id}/download` - Download video
+- `POST /api/renders/{render_id}/retry` - Retry failed render
 
 ### Assets
 - `GET /api/thumbnails/{clip_id}` - Get clip thumbnail
 
+### Regenerate Highlights API
+
+**Endpoint**: `POST /api/jobs/{job_id}/regenerate-highlights`
+
+**Request Body**:
+```json
+{
+  "clip_count": 20,      // Optional: number of clips (null = auto-calculate)
+  "adaptive": true       // Use adaptive algorithm for long videos
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "deleted": 12,         // Number of old clips deleted
+  "created": 20,         // Number of new clips created
+  "clips": [...]         // Array of new clips with metadata
+}
+```
+
 ## Processing Pipeline
 
 1. **Acquire**: Download (YouTube) or save upload
-2. **Normalize**: Convert to standard format (H.264/AAC)
-3. **Transcribe**: Generate transcript with word-level timestamps
-4. **Generate Highlights**: Score segments based on:
-   - Hook keywords (Indonesian + English)
-   - Word density (unique words ratio)
-   - Duration preference (ideal ~35 seconds)
-5. **Create Thumbnails**: Extract mid-frame for each clip
-6. **Render**: Create vertical 9:16 output with optional:
+2. **Transcribe**: Generate transcript with word-level timestamps (directly from raw video)
+3. **Generate Highlights**: Enhanced scoring algorithm:
+   - **Hook keywords** with 4 categories (importance, revelation, summary, teaching)
+   - **Content quality** analysis (word density, vocabulary diversity, questions)
+   - **Dynamic duration** (15-60 seconds based on content, not fixed)
+   - **Position diversity** (distributes clips throughout video)
+   - **Adaptive clip count** (5-50 clips based on video duration)
+4. **Create Thumbnails**: Extract mid-frame for each clip
+5. **Ready for Preview**: Clips available for selection and preview
+6. **Render** (on demand): Create vertical 9:16 output with optional:
    - Face tracking (active speaker detection)
+   - Smart crop (multi-person framing)
    - Captions (burned-in subtitles)
 
 ## Notes
