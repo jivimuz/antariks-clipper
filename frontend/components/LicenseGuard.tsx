@@ -13,11 +13,16 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
 
   const checkLicense = useCallback(async () => {
     try {
-      const res = await fetch(getApiEndpoint("/api/license/status"));
-      const data: LicenseStatus = await res.json();
+      // Use the unified validate endpoint with no body to check existing license
+      const res = await fetch(getApiEndpoint("/api/license/validate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
 
-      if (!data.activated || !data.valid) {
-        // Redirect to license page if not activated or invalid
+      if (!data.valid) {
+        // Redirect to license page if not valid
         router.push("/license");
         return;
       }

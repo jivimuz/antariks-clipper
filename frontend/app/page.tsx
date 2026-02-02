@@ -21,9 +21,29 @@ function useIsLoggedIn() {
 function useLicenseStatus() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
   useEffect(() => {
-    fetch(getApiEndpoint('/api/license/status'))
+    // Use the unified validate endpoint
+    fetch(getApiEndpoint('/api/license/validate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    })
       .then(res => res.json())
-      .then(data => setLicenseStatus(data))
+      .then(data => {
+        // Map the new response format to LicenseStatus
+        if (data.valid) {
+          setLicenseStatus({
+            activated: true,
+            valid: true,
+            owner: data.owner,
+            expires: data.expires
+          });
+        } else {
+          setLicenseStatus({
+            activated: false,
+            valid: false
+          });
+        }
+      })
       .catch(err => console.error('Failed to fetch license status:', err));
   }, []);
   return licenseStatus;
