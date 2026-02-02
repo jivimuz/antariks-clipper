@@ -13,6 +13,9 @@ LICENSE_FILE = DATA_DIR / "license.json"
 # External validation URL
 LICENSE_URL = os.getenv("LICENSE_URL", "https://management.antariks.id/api/license/validate")
 
+# HTTP timeout for license validation requests (in seconds)
+LICENSE_TIMEOUT = 30.0
+
 def _get_product_code() -> str:
     """
     Get product code - OBFUSCATED
@@ -53,7 +56,7 @@ def is_expired(expires_str: str) -> bool:
     try:
         expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
         return expires_date < date.today()
-    except:
+    except (ValueError, TypeError):
         return True
 
 async def validate_license(license_key: str | None = None) -> dict:
@@ -86,7 +89,7 @@ async def validate_license(license_key: str | None = None) -> dict:
     }
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=LICENSE_TIMEOUT) as client:
             response = await client.post(LICENSE_URL, json=payload)
             response.raise_for_status()
             data = response.json()
