@@ -64,6 +64,12 @@ export default function JobsPage() {
     // First click shows confirmation
     if (deleteConfirmId !== jobId) {
       setDeleteConfirmId(jobId);
+      // Auto-reset confirmation after 5 seconds
+      setTimeout(() => {
+        if (deleteConfirmId === jobId) {
+          setDeleteConfirmId(null);
+        }
+      }, 5000);
       return;
     }
 
@@ -75,16 +81,27 @@ export default function JobsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete job');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to delete job');
       }
 
       const result = await response.json();
-      toast.success(`Job deleted successfully! ${result.files_deleted} files removed.`);
+      
+      // Enhanced success message with details
+      let message = `Job deleted successfully! ${result.files_deleted} file(s) removed`;
+      if (result.space_freed_mb && result.space_freed_mb > 0) {
+        message += `, ${result.space_freed_mb} MB freed`;
+      }
+      if (result.files_failed > 0) {
+        message += `. Warning: ${result.files_failed} file(s) could not be deleted`;
+      }
+      toast.success(message, { duration: 5000 });
       
       // Refresh the job list
       await fetchJobs(pagination.page);
     } catch (error) {
-      toast.error('Failed to delete job');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete job';
+      toast.error(errorMessage);
       console.error('Delete error:', error);
     } finally {
       setDeletingJobId(null);
@@ -250,17 +267,24 @@ export default function JobsPage() {
                              handleDeleteJob(job.id);
                            }}
                            disabled={deletingJobId === job.id}
-                           className={`p-2 rounded-lg transition-all ${
+                           className={`relative p-2 rounded-lg transition-all group/delete ${
                              deleteConfirmId === job.id
-                               ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+                               ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 animate-pulse'
                                : 'bg-slate-800/50 text-slate-400 hover:bg-red-500/10 hover:text-red-400 border border-slate-700/50 hover:border-red-500/20'
                            }`}
-                           title={deleteConfirmId === job.id ? "Click again to confirm" : "Delete job"}
+                           title={deleteConfirmId === job.id ? "Click again to confirm deletion" : "Delete job and all files"}
                          >
                            {deletingJobId === job.id ? (
                              <Loader2 size={18} className="animate-spin" />
                            ) : (
-                             <Trash2 size={18} />
+                             <>
+                               <Trash2 size={18} />
+                               {deleteConfirmId === job.id && (
+                                 <span className="absolute -top-8 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                                   Confirm delete?
+                                 </span>
+                               )}
+                             </>
                            )}
                          </button>
                       </div>
