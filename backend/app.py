@@ -65,7 +65,7 @@ class LicenseValidateRequest(BaseModel):
     license_key: Optional[str] = None
 
 @app.post("/api/license/validate")
-def license_validate(payload: LicenseValidateRequest = None):
+async def license_validate(payload: LicenseValidateRequest = None):
     """
     Validate license - single endpoint for all license operations.
     
@@ -90,7 +90,7 @@ def license_validate(payload: LicenseValidateRequest = None):
         if payload and payload.license_key:
             license_key = payload.license_key
         
-        result = validate_license(license_key)
+        result = await validate_license(license_key)
         
         if not result.get("valid"):
             # Return error but with 200 status to match spec

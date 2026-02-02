@@ -1,231 +1,125 @@
 """License validation service for Antariks Clipper"""
 import os
 import json
-import base64
-import logging
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional, Dict
 import uuid
-import requests
-
-logger = logging.getLogger(__name__)
+import httpx
+from datetime import datetime, date
+from pathlib import Path
+from config import DATA_DIR
 
 # License storage path
-LICENSE_DATA_PATH = Path(__file__).parent.parent / "data" / "license.json"
+LICENSE_FILE = DATA_DIR / "license.json"
 
-# License validation URL (configurable via env)
+# External validation URL
 LICENSE_URL = os.getenv("LICENSE_URL", "https://management.antariks.id/api/license/validate")
-
-# License cache duration in hours (configurable via env)
-LICENSE_CACHE_HOURS = int(os.getenv("LICENSE_CACHE_HOURS", "24"))
-
 
 def _get_product_code() -> str:
     """
-    Get obfuscated product code.
-    Product code is encoded to avoid plain text in source.
+    Get product code - OBFUSCATED
+    TIDAK BOLEH ada plain string di source code
     """
     import base64
-    _encoded = b'QU5YMjAyNjAxMjhYNU4wOTI1'
-    return base64.b64decode(_encoded).decode('utf-8')
+    # Encoded product code
+    encoded = 'QU5YMjAyNjAxMjhYNU4wOTI1'
+    return base64.b64decode(encoded).decode('utf-8')
 
+def get_mac_address() -> str:
+    """Get MAC address of the device"""
+    mac = uuid.getnode()
+    mac_str = ':'.join(('%012X' % mac)[i:i+2] for i in range(0, 12, 2))
+    return mac_str
 
-def _get_mac_address() -> str:
-    """
-    Get MAC address of the device.
-    Returns the first non-localhost MAC address found.
-    """
-    try:
-        # Get the MAC address using uuid.getnode()
-        mac = uuid.getnode()
-        # Convert to standard MAC format
-        mac_str = ':'.join(('%012X' % mac)[i:i+2] for i in range(0, 12, 2))
-        return mac_str
-    except Exception as e:
-        logger.error(f"Failed to get MAC address: {e}")
-        return "UNKNOWN-MAC"
-
-
-def _check_expiration(expires_str: str) -> Optional[str]:
-    """
-    Check if license expiration date is valid.
-    
-    Args:
-        expires_str: Expiration date in YYYY-MM-DD format
-        
-    Returns:
-        None if valid, error message if expired or invalid format
-    """
-    if not expires_str or expires_str == "Unknown":
-        return None  # No expiration to check
-    
-    try:
-        expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
-        today = datetime.now().date()
-        
-        if expires_date < today:
-            logger.warning(f"License expired: {expires_str}")
-            return "License expired"
-        
-        return None  # Valid
-    except ValueError as e:
-        logger.error(f"Invalid expiration date format: {expires_str} - {e}")
-        return None  # Treat invalid format as no expiration check
-
-
-def _load_license_data() -> Optional[Dict]:
-    """Load license data from storage file"""
-    try:
-        if LICENSE_DATA_PATH.exists():
-            with open(LICENSE_DATA_PATH, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load license data: {e}")
+def load_license() -> dict | None:
+    """Load saved license from storage"""
+    if LICENSE_FILE.exists():
+        with open(LICENSE_FILE, 'r') as f:
+            return json.load(f)
     return None
 
+def save_license(license_key: str, owner: str, expires: str) -> None:
+    """Save license to storage"""
+    LICENSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "license_key": license_key,
+        "owner": owner,
+        "expires": expires,
+        "last_validated": datetime.utcnow().isoformat()
+    }
+    with open(LICENSE_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
 
-def _save_license_data(data: Dict) -> bool:
-    """Save license data to storage file"""
+def is_expired(expires_str: str) -> bool:
+    """Check if license is expired"""
     try:
-        # Ensure data directory exists
-        LICENSE_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(LICENSE_DATA_PATH, 'w') as f:
-            json.dump(data, f, indent=2)
+        expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
+        return expires_date < date.today()
+    except:
         return True
-    except Exception as e:
-        logger.error(f"Failed to save license data: {e}")
-        return False
 
-
-def validate_license_with_server(license_key: str) -> Dict:
+async def validate_license(license_key: str | None = None) -> dict:
     """
-    Validate license key with remote server.
+    Validate license against external server
     
     Args:
-        license_key: The license key to validate
-        
+        license_key: License key to validate. If None, use saved license.
+    
     Returns:
-        Dict with validation result:
-        - valid: bool
-        - owner: str (if valid)
-        - expires: str (if valid)
-        - error: str (if error occurred)
-    """
-    try:
-        product_code = _get_product_code()
-        mac_address = _get_mac_address()
-        
-        payload = {
-            "license_key": license_key,
-            "product_code": product_code,
-            "account": mac_address
+        {
+            "valid": bool,
+            "owner": str (if valid),
+            "expires": str (if valid),
+            "error": str (if error)
         }
-        
-        logger.info(f"Validating license with server: {LICENSE_URL}")
-        response = requests.post(
-            LICENSE_URL,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=10
-        )
-        
-        if response.status_code == 200:
+    """
+    # Get license key
+    if license_key is None:
+        saved = load_license()
+        if saved is None:
+            return {"valid": False, "error": "No license configured"}
+        license_key = saved["license_key"]
+    
+    # Build payload with ALL THREE FIELDS
+    payload = {
+        "license_key": license_key,
+        "product_code": _get_product_code(),  # Obfuscated
+        "account": get_mac_address()
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(LICENSE_URL, json=payload)
+            response.raise_for_status()
             data = response.json()
             
-            if data.get("valid"):
-                # Check expiration date
-                expires_str = data.get("expires", "")
-                expiration_error = _check_expiration(expires_str)
+            # Check response
+            if data.get("valid") is True:
+                expires = data.get("expires", "")
                 
-                if expiration_error:
-                    return {
-                        "valid": False,
-                        "error": expiration_error
-                    }
+                # Check if expired
+                if is_expired(expires):
+                    return {"valid": False, "error": "License expired"}
+                
+                # Save license if new
+                save_license(license_key, data.get("owner", ""), expires)
                 
                 return {
                     "valid": True,
-                    "owner": data.get("owner", "Unknown"),
-                    "expires": expires_str
+                    "owner": data.get("owner", ""),
+                    "expires": expires
                 }
             else:
-                return {
-                    "valid": False,
-                    "error": "Invalid license key"
-                }
-        else:
-            logger.error(f"License validation failed: HTTP {response.status_code}")
-            return {
-                "valid": False,
-                "error": f"License validation failed: HTTP {response.status_code}"
-            }
-            
-    except requests.exceptions.Timeout:
-        logger.error("License validation timeout")
-        return {
-            "valid": False,
-            "error": "License validation failed: Request timeout"
-        }
-    except requests.exceptions.ConnectionError:
-        logger.error("License validation connection error")
-        return {
-            "valid": False,
-            "error": "License validation failed: Connection error"
-        }
+                return {"valid": False, "error": "Invalid license key"}
+                
+    except httpx.HTTPError as e:
+        return {"valid": False, "error": f"Validation failed: {str(e)}"}
     except Exception as e:
-        logger.error(f"License validation error: {e}")
-        return {
-            "valid": False,
-            "error": f"License validation failed: {str(e)}"
-        }
+        return {"valid": False, "error": f"Error: {str(e)}"}
 
 
-def activate_license(license_key: str) -> Dict:
+# Legacy functions for backward compatibility
+def get_license_status() -> dict:
     """
-    Activate a license key.
-    Validates with server and saves if valid.
-    
-    Returns:
-        Dict with activation result
-    """
-    # Validate with server
-    result = validate_license_with_server(license_key)
-    
-    if result.get("valid"):
-        # Save license data
-        license_data = {
-            "license_key": license_key,
-            "owner": result.get("owner"),
-            "expires": result.get("expires"),
-            "last_validated": datetime.now().isoformat(),
-            "activated_at": datetime.now().isoformat()
-        }
-        
-        if _save_license_data(license_data):
-            logger.info(f"License activated successfully for {result.get('owner')}")
-            return {
-                "success": True,
-                "owner": result.get("owner"),
-                "expires": result.get("expires")
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to save license data"
-            }
-    else:
-        return {
-            "success": False,
-            "error": result.get("error", "Invalid license key")
-        }
-
-
-def get_license_status() -> Dict:
-    """
-    Get current license status.
-    Checks cache and re-validates if needed.
+    Get current license status (synchronous wrapper for middleware).
     
     Returns:
         Dict with license status:
@@ -233,56 +127,28 @@ def get_license_status() -> Dict:
         - valid: bool (if activated)
         - owner: str (if valid)
         - expires: str (if valid)
-        - needs_validation: bool (if cache expired)
+        - error: str (if not valid)
     """
-    license_data = _load_license_data()
+    saved = load_license()
     
-    if not license_data:
+    if not saved:
         return {"activated": False}
     
-    # Check if cache is expired (configurable hours)
-    try:
-        last_validated = datetime.fromisoformat(license_data.get("last_validated", ""))
-        cache_age = datetime.now() - last_validated
-        
-        # Re-validate if cache is older than configured hours
-        if cache_age > timedelta(hours=LICENSE_CACHE_HOURS):
-            logger.info("License cache expired, re-validating...")
-            result = validate_license_with_server(license_data["license_key"])
-            
-            if result.get("valid"):
-                # Update cache
-                license_data["owner"] = result.get("owner")
-                license_data["expires"] = result.get("expires")
-                license_data["last_validated"] = datetime.now().isoformat()
-                _save_license_data(license_data)
-            else:
-                # Validation failed
-                return {
-                    "activated": True,
-                    "valid": False,
-                    "error": result.get("error", "License validation failed")
-                }
-    except Exception as e:
-        logger.error(f"Error checking license cache: {e}")
-    
-    # Check expiration date even for cached status
-    expires_str = license_data.get("expires", "")
-    expiration_error = _check_expiration(expires_str)
-    
-    if expiration_error:
+    # Check expiration date
+    expires_str = saved.get("expires", "")
+    if is_expired(expires_str):
         return {
             "activated": True,
             "valid": False,
-            "error": expiration_error
+            "error": "License expired"
         }
     
     # Return cached status
     return {
         "activated": True,
         "valid": True,
-        "owner": license_data.get("owner", "Unknown"),
-        "expires": license_data.get("expires", "Unknown")
+        "owner": saved.get("owner", "Unknown"),
+        "expires": saved.get("expires", "Unknown")
     }
 
 
@@ -296,112 +162,3 @@ def check_license_valid() -> bool:
     """
     status = get_license_status()
     return status.get("activated") and status.get("valid", False)
-
-
-def validate_license(license_key: Optional[str] = None) -> Dict:
-    """
-    Unified license validation function.
-    
-    If license_key is provided: Validate new license and save if valid (activation).
-    If license_key is None: Check existing license from storage.
-    
-    Args:
-        license_key: Optional license key to validate
-        
-    Returns:
-        Dict with validation result:
-        - valid: bool
-        - owner: str (if valid)
-        - expires: str (if valid)
-        - error: str (if not valid)
-    """
-    if license_key:
-        # Activation flow: validate new license key
-        logger.info("Validating new license key for activation")
-        result = validate_license_with_server(license_key)
-        
-        if result.get("valid"):
-            # Save license data
-            license_data = {
-                "license_key": license_key,
-                "owner": result.get("owner"),
-                "expires": result.get("expires"),
-                "last_validated": datetime.now().isoformat(),
-                "activated_at": datetime.now().isoformat()
-            }
-            
-            if _save_license_data(license_data):
-                logger.info(f"License activated successfully for {result.get('owner')}")
-                return {
-                    "valid": True,
-                    "owner": result.get("owner"),
-                    "expires": result.get("expires")
-                }
-            else:
-                return {
-                    "valid": False,
-                    "error": "Failed to save license data"
-                }
-        else:
-            return {
-                "valid": False,
-                "error": result.get("error", "Invalid license key")
-            }
-    else:
-        # Check existing license flow
-        logger.info("Checking existing license status")
-        license_data = _load_license_data()
-        
-        if not license_data:
-            return {
-                "valid": False,
-                "error": "No license configured"
-            }
-        
-        # Check if cache is expired (configurable hours)
-        try:
-            last_validated = datetime.fromisoformat(license_data.get("last_validated", ""))
-            cache_age = datetime.now() - last_validated
-            
-            # Re-validate if cache is older than configured hours
-            if cache_age > timedelta(hours=LICENSE_CACHE_HOURS):
-                logger.info("License cache expired, re-validating...")
-                result = validate_license_with_server(license_data["license_key"])
-                
-                if result.get("valid"):
-                    # Update cache
-                    license_data["owner"] = result.get("owner")
-                    license_data["expires"] = result.get("expires")
-                    license_data["last_validated"] = datetime.now().isoformat()
-                    _save_license_data(license_data)
-                    
-                    return {
-                        "valid": True,
-                        "owner": result.get("owner"),
-                        "expires": result.get("expires")
-                    }
-                else:
-                    # Validation failed
-                    return {
-                        "valid": False,
-                        "error": result.get("error", "License validation failed")
-                    }
-        except Exception as e:
-            logger.error(f"Error checking license cache: {e}")
-        
-        # Check expiration date for cached status
-        expires_str = license_data.get("expires", "")
-        expiration_error = _check_expiration(expires_str)
-        
-        if expiration_error:
-            return {
-                "valid": False,
-                "error": expiration_error
-            }
-        
-        # Return cached status
-        return {
-            "valid": True,
-            "owner": license_data.get("owner", "Unknown"),
-            "expires": license_data.get("expires", "Unknown")
-        }
