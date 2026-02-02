@@ -163,8 +163,28 @@ Frontend will be available at http://localhost:3000
 
 ## Troubleshooting
 
-### YouTube Download Error 403 Forbidden
-If you get HTTP 403 errors when downloading YouTube videos:
+### YouTube Download Issues
+
+#### Error: "Video is unavailable or has been removed"
+- The video may have been deleted, made private, or removed by the uploader
+- Verify the URL is correct and the video is publicly accessible
+- Try a different video to confirm the system is working
+
+#### Error: "Video is blocked in your region"
+- The video has geographical restrictions
+- Consider using a VPN or try a different video
+- Some videos may be permanently restricted in certain regions
+
+#### Error: "Video is age-restricted and requires authentication"
+- The video requires sign-in to view
+- You can provide a cookies.txt file from your browser session:
+  1. Install a browser extension like "Get cookies.txt"
+  2. Export cookies from YouTube while logged in
+  3. Place the file in the backend directory
+  4. The system will automatically use it for downloads
+
+#### Error: "Access forbidden" or HTTP 403
+This can have several causes:
 
 1. **Update yt-dlp** (YouTube changes frequently):
    ```bash
@@ -189,15 +209,88 @@ If you get HTTP 403 errors when downloading YouTube videos:
 
 4. **Restart the backend** after installing dependencies
 
-### Video Processing Errors
-- Ensure ffmpeg is properly installed and in PATH
-- Check that the video file is not corrupted
-- Try with a different video first
+5. **Wait and retry** - Sometimes YouTube temporarily blocks too many requests
 
-### Whisper Model Download
+#### Error: "Too many requests"
+- YouTube has rate-limited your IP address
+- Wait 10-15 minutes before trying again
+- Reduce the frequency of download requests
+
+#### Error: "Network error" or "Connection timeout"
+- Check your internet connection
+- The video server may be temporarily unavailable
+- The system will automatically retry with exponential backoff
+- Try again in a few minutes
+
+### Video Processing Errors
+
+#### Transcription Failed
+- Ensure the video has an audio track
+- Supported languages: English, Indonesian (primary), and many others
+- Videos without speech cannot generate highlights
+- Check that the audio format is supported (MP3, AAC, WAV)
+
+#### No Highlights Generated
+- Video needs sufficient spoken content (minimum ~30 seconds)
+- Speech must be clear and detectable
+- Try adjusting the video's audio levels if very quiet
+- Silent videos or music-only videos won't generate highlights
+
+#### Render Failed
+- Ensure the raw video file still exists
+- Check available disk space
+- Try with simpler options (disable face tracking/smart crop)
+- Check the logs for specific FFmpeg errors
+
+### General Issues
+
+#### Missing Dependencies
+If you see errors about missing `ffmpeg` or `yt-dlp`:
+
+```bash
+# Install ffmpeg
+# Ubuntu/Debian:
+sudo apt-get update && sudo apt-get install -y ffmpeg
+
+# macOS:
+brew install ffmpeg
+
+# Windows:
+# Download from https://ffmpeg.org/download.html and add to PATH
+
+# Install yt-dlp
+pip install --upgrade yt-dlp
+```
+
+#### Whisper Model Download
 First run will download the Whisper model (~150MB). If it fails:
 - Check internet connection
-- Try running with `--reload` flag disabled
+- Ensure enough disk space
+- The model will be cached for future use
+
+#### Jobs Stuck in Processing
+- Check the backend logs for specific errors
+- The job may have failed silently - check the error field
+- You can retry the job from the UI
+- Ensure all dependencies are installed correctly
+
+### Getting More Information
+
+#### Enable Debug Logging
+To see detailed logs:
+1. Edit `backend/app.py`
+2. Change logging level to DEBUG:
+   ```python
+   logging.basicConfig(level=logging.DEBUG)
+   ```
+3. Restart the backend
+4. Check logs for detailed processing information
+
+#### Check Logs
+- Backend logs show detailed processing steps
+- Each major operation is logged with ✓ (success) or ❌ (error)
+- Look for ERROR or WARNING level messages
+- File paths and sizes are logged for debugging
 
 ## License
 
