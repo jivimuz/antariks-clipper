@@ -26,7 +26,6 @@ def _get_product_code() -> str:
     Get obfuscated product code.
     Product code is encoded to avoid plain text in source.
     """
-    # Product code is base64 encoded: ANX20260128X5N0925
     import base64
     _encoded = b'QU5YMjAyNjAxMjhYNU4wOTI1'
     return base64.b64decode(_encoded).decode('utf-8')
