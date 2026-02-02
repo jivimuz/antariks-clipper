@@ -56,6 +56,29 @@ def check_dependencies() -> Tuple[bool, list, dict]:
             result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=10)
             versions['yt-dlp'] = result.stdout.strip()
             logger.debug(f"yt-dlp version: {versions['yt-dlp']}")
+            
+            # Check if yt-dlp is outdated (simple version check)
+            try:
+                current_version = versions['yt-dlp']
+                # Version format: YYYY.MM.DD
+                if current_version and current_version != 'unknown':
+                    # Extract year and month
+                    version_parts = current_version.split('.')
+                    if len(version_parts) >= 2:
+                        year = int(version_parts[0])
+                        month = int(version_parts[1])
+                        
+                        # If version is older than 2 months, warn
+                        import datetime
+                        now = datetime.datetime.now()
+                        version_date = datetime.datetime(year, month, 1)
+                        age_months = (now.year - version_date.year) * 12 + now.month - version_date.month
+                        
+                        if age_months > 2:
+                            logger.warning(f"⚠️ yt-dlp version {current_version} is {age_months} months old")
+                            logger.warning("💡 Consider updating: pip install --upgrade yt-dlp")
+            except Exception as e:
+                logger.debug(f"Could not check yt-dlp version age: {e}")
         except Exception as e:
             logger.debug(f"Could not get yt-dlp version: {e}")
             versions['yt-dlp'] = 'unknown'
@@ -76,6 +99,57 @@ def validate_youtube_url(url: str) -> bool:
         r'^https?://(www\.)?youtube\.com/live/[\w-]+',
     ]
     return any(re.match(p, url) for p in patterns)
+
+def update_ytdlp() -> Tuple[bool, str]:
+    """
+    Update yt-dlp to the latest version
+    
+    Returns:
+        (success, message)
+    """
+    logger.info("🔄 Attempting to update yt-dlp...")
+    
+    try:
+        # Try pip3 first, then pip
+        pip_commands = ['pip3', 'pip']
+        
+        for pip_cmd in pip_commands:
+            if shutil.which(pip_cmd):
+                logger.info(f"Using {pip_cmd} to update yt-dlp...")
+                result = subprocess.run(
+                    [pip_cmd, 'install', '--upgrade', 'yt-dlp'],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                
+                if result.returncode == 0:
+                    # Get new version
+                    version_result = subprocess.run(
+                        ['yt-dlp', '--version'],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    new_version = version_result.stdout.strip()
+                    logger.info(f"✓ yt-dlp updated successfully to version {new_version}")
+                    return True, f"yt-dlp updated to version {new_version}"
+                else:
+                    logger.warning(f"Update with {pip_cmd} failed: {result.stderr}")
+                    continue
+        
+        error_msg = "Could not update yt-dlp. No suitable pip command found or all attempts failed."
+        logger.error(error_msg)
+        return False, error_msg
+        
+    except subprocess.TimeoutExpired:
+        error_msg = "yt-dlp update timed out"
+        logger.error(error_msg)
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Error updating yt-dlp: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return False, error_msg
 
 def _parse_download_error(stderr: str) -> str:
     """
