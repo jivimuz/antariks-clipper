@@ -214,6 +214,14 @@ def init_db():
     """)
     
     conn.commit()
+    
+    # Migration: Add s3_url column if it doesn't exist
+    try:
+        cursor.execute("SELECT s3_url FROM jobs LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN s3_url TEXT")
+        conn.commit()
+    
     conn.close()
 
 # Job operations

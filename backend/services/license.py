@@ -125,6 +125,7 @@ async def validate_license(license_key: str | None = None) -> dict:
                     logger.warning("License validated but failed to save to disk")
                 
                 return {
+                    "licenseKey": license_key,
                     "valid": True,
                     "owner": data.get("owner", ""),
                     "expires": expires

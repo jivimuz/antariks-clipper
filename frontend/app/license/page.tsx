@@ -12,6 +12,7 @@ export default function LicensePage() {
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [error, setError] = useState("");
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
+  const [isEditingLicense, setIsEditingLicense] = useState(false);
   const router = useRouter();
 
   // Check license status on mount
@@ -32,13 +33,15 @@ export default function LicensePage() {
       // Save status for display (both valid and invalid)
       if (data.valid) {
         setLicenseStatus({
+          licenseKey: data.license_key || "",
           activated: true,
-          valid: true,
+          valid: data.valid,
           owner: data.owner,
           expires: data.expires
         });
       } else if (data.error) {
         setLicenseStatus({
+          licenseKey: "",
           activated: true,
           valid: false,
           error: data.error
@@ -74,11 +77,18 @@ export default function LicensePage() {
       const data = await res.json();
       
       if (data.valid) {
-        toast.success(`License activated for ${data.owner}!`);
-        // Redirect to home after successful activation
-        setTimeout(() => {
-          router.push("/");
-        }, 1000);
+        toast.success(`License updated for ${data.owner}!`);
+        // Update license status immediately
+        setLicenseStatus({
+          licenseKey: licenseKey,
+          activated: true,
+          valid: true,
+          owner: data.owner,
+          expires: data.expires
+        });
+        // Reset edit mode and input
+        setIsEditingLicense(false);
+        setLicenseKey("");
       } else {
         throw new Error(data.error || "Invalid license key");
       }
@@ -122,7 +132,7 @@ export default function LicensePage() {
         </div>
 
         {/* Active License Display */}
-        {licenseStatus && licenseStatus.activated && licenseStatus.valid && (
+        {licenseStatus && licenseStatus.activated && licenseStatus.valid && !isEditingLicense && (
           <div className="mb-6 p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
             <div className="flex items-start gap-3 mb-4">
               <CheckCircle2 size={24} className="text-emerald-400 shrink-0 mt-0.5" />
@@ -133,7 +143,16 @@ export default function LicensePage() {
                 </p>
               </div>
             </div>
-            <div className="space-y-3 pl-9">
+            <div className="space-y-3 pl-9 mb-4">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-sm">License Key</span>
+                <span className="text-white font-medium font-mono text-sm">
+                  {licenseStatus.licenseKey ? 
+                    licenseStatus.licenseKey.substring(0, 4) + "****" + licenseStatus.licenseKey.slice(-4)
+                    : "N/A"
+                  }
+                </span>
+              </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm">Owner</span>
                 <span className="text-white font-medium">{licenseStatus.owner}</span>
@@ -148,6 +167,20 @@ export default function LicensePage() {
                   })}
                 </span>
               </div>
+            </div>
+            <div className="flex gap-2 pt-4 border-t border-emerald-500/20">
+              <button
+                onClick={() => setIsEditingLicense(true)}
+                className="flex-1 py-2 px-4 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 text-sm font-medium rounded-lg transition-colors"
+              >
+                Change License
+              </button>
+              <button
+                onClick={() => router.push("/")}
+                className="flex-1 py-2 px-4 bg-slate-700/30 hover:bg-slate-700/50 text-slate-400 text-sm font-medium rounded-lg transition-colors"
+              >
+                Back Home
+              </button>
             </div>
           </div>
         )}
@@ -169,12 +202,12 @@ export default function LicensePage() {
 
         {/* Activation Form */}
         <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-8 ring-1 ring-white/5">
-          {/* Only show form if no valid license */}
-          {(!licenseStatus || !licenseStatus.valid) && (
+          {/* Only show form if no valid license or editing license */}
+          {(!licenseStatus || !licenseStatus.valid || isEditingLicense) && (
             <form onSubmit={handleActivate} className="space-y-6">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-emerald-100/80 ml-1">
-                  {licenseStatus?.valid ? "Update License Key" : "License Key"}
+                  {isEditingLicense ? "New License Key" : "License Key"}
                 </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors">
@@ -188,6 +221,7 @@ export default function LicensePage() {
                     className="w-full pl-12 pr-4 py-4 bg-slate-950/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none"
                     disabled={loading}
                     required
+                    autoFocus={isEditingLicense}
                   />
                 </div>
               </div>
@@ -199,41 +233,51 @@ export default function LicensePage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl hover:from-emerald-500 hover:to-teal-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 blur-md rounded-xl" />
-                <span className="relative z-10 flex items-center gap-2">
-                  {loading ? (
-                    <>
-                      <Loader2 className="animate-spin" size={20} />
-                      Activating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={20} />
-                      {licenseStatus?.activated ? "Update License" : "Activate License"}
-                    </>
-                  )}
-                </span>
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 group relative flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl hover:from-emerald-500 hover:to-teal-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 blur-md rounded-xl" />
+                  <span className="relative z-10 flex items-center gap-2">
+                    {loading ? (
+                      <>
+                        <Loader2 className="animate-spin" size={20} />
+                        Activating...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={20} />
+                        {isEditingLicense ? "Update License" : "Activate License"}
+                      </>
+                    )}
+                  </span>
+                </button>
+                {isEditingLicense && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingLicense(false);
+                      setLicenseKey("");
+                      setError("");
+                    }}
+                    disabled={loading}
+                    className="px-6 py-4 bg-slate-700/30 hover:bg-slate-700/50 text-slate-400 font-bold rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
           )}
 
-          {/* Show message if license is valid */}
-          {licenseStatus && licenseStatus.valid && (
+          {/* Show message if license is valid and not editing */}
+          {licenseStatus && licenseStatus.valid && !isEditingLicense && (
             <div className="text-center space-y-4">
               <p className="text-slate-400">
-                Your license is active and valid. If you need to update your license, please contact support.
+                Your license is active and valid.
               </p>
-              <button
-                onClick={() => router.push("/")}
-                className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
-              >
-                ← Return to Dashboard
-              </button>
             </div>
           )}
 

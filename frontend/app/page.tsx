@@ -35,7 +35,8 @@ function useLicenseStatus() {
             activated: true,
             valid: true,
             owner: data.owner,
-            expires: data.expires
+            expires: data.expires,
+            licenseKey: data.licenseKey
           });
         } else {
           setLicenseStatus({
@@ -103,8 +104,10 @@ export default function Home() {
         // TypeScript now knows file is not null due to the check above
         formData.append('file', file!);
       }
+
+      console.log(licenseStatus)
       // --- SaaS: Require license key ---
-      const licenseKey = typeof window !== 'undefined' ? localStorage.getItem('license_key') : null;
+      const licenseKey = typeof window !== 'undefined' ? licenseStatus?.licenseKey : null;
       if (!licenseKey) {
         setError('License key required. Please enter your license in the Account page.');
         toast.error('License key required. Please enter your license in the Account page.');
@@ -180,7 +183,7 @@ export default function Home() {
               <span role="img" aria-label="User">👤</span>
             </button>
             <a
-              href="/settings"
+              href="/license"
               className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-white font-bold text-xs"
             >
               License Settings

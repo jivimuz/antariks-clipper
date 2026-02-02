@@ -231,9 +231,9 @@ def process_render(render_id: str):
             render_id,
             status='ready',
             progress=100,
-            output_path=s3_url
+            output_path=str(output_path)
         )
-        logger.info(f"Render complete: {render_id}, S3: {s3_url}")
+        logger.info(f"Render complete: {render_id}, output: {output_path}")
         # Notify webhook if set
         render = db.get_render(render_id)
         if render and render.get('webhook_url'):

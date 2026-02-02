@@ -3,6 +3,7 @@
  */
 
 export interface LicenseStatus {
+  licenseKey?: string;
   activated: boolean;
   valid?: boolean;
   owner?: string;

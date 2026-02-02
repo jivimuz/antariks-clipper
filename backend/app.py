@@ -537,22 +537,19 @@ async def create_job(
     license_key: Optional[str] = Header(None, alias="X-License-Key")
 ):
     """
-    Create a new job (requires valid license key in X-License-Key header)
+    Create a new job (requires valid license)
     - YouTube: source_type=youtube, youtube_url=...
     - Upload: source_type=upload, file=...
     """
     # --- License check ---
-    if not license_key:
-        raise HTTPException(status_code=401, detail="License key required (X-License-Key header)")
-    lic = db.get_license_by_key(license_key)
-    if not lic or not lic.get("is_active"):
-        raise HTTPException(status_code=401, detail="Invalid or inactive license key")
-    import datetime
-    if lic.get("expires_at"):
-        if datetime.datetime.fromisoformat(lic["expires_at"]) < datetime.datetime.utcnow():
-            raise HTTPException(status_code=403, detail="License expired")
-    if lic.get("usage_limit") is not None and lic["usage_count"] >= lic["usage_limit"]:
-        raise HTTPException(status_code=403, detail="License usage limit reached")
+    # Check local license first (from validate endpoint)
+    license_status = get_license_status()
+    
+    if not license_status.get("activated"):
+        raise HTTPException(status_code=401, detail="License not activated. Please activate your license first.")
+    
+    if not license_status.get("valid"):
+        raise HTTPException(status_code=403, detail=license_status.get("error", "License is invalid or expired"))
 
     try:
         job_id = str(uuid.uuid4())
@@ -563,8 +560,7 @@ async def create_job(
             job = db.create_job(job_id, source_type="youtube", source_url=youtube_url)
             # Submit to background processing
             submit_job(job_id)
-            db.increment_license_usage(license_key)
-            log_action(lic["user_id"], "create_job", f"Job created: {job_id}")
+            log_action(None, "create_job", f"Job created: {job_id}")
             return {"job_id": job_id, "status": "queued"}
         elif source_type == "upload":
             if not file:
@@ -585,12 +581,11 @@ async def create_job(
                 s3_url = None
             # Create job
             job = db.create_job(job_id, source_type="upload")
-            db.update_job(job_id, raw_path=str(raw_path), s3_url=s3_url)
+            db.update_job(job_id, raw_path=str(raw_path))
             # Submit to background processing
             submit_job(job_id)
-            db.increment_license_usage(license_key)
-            log_action(lic["user_id"], "create_job", f"Job created: {job_id}")
-            return {"job_id": job_id, "status": "queued", "s3_url": s3_url}
+            log_action(None, "create_job", f"Job created: {job_id}")
+            return {"job_id": job_id, "status": "queued"}
         else:
             raise HTTPException(status_code=400, detail="Invalid source_type")
     except HTTPException:
