@@ -15,6 +15,7 @@ from services.transcribe import transcribe_video, load_transcript
 from services.highlight import generate_highlights
 from services.thumbnails import generate_thumbnail
 from services.render import render_clip
+from services.caption_generator import generate_caption, generate_hashtags
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,20 @@ def process_job(job_id: str):
                 else:
                     logger.warning(f"  ⚠ Thumbnail generation failed")
                 
+                # Generate caption and hashtags for social media
+                caption = generate_caption(
+                    title=hl['title'],
+                    transcript_snippet=hl['snippet'],
+                    metadata=hl.get('metadata', {})
+                )
+                hashtags = generate_hashtags(
+                    title=hl['title'],
+                    transcript_snippet=hl['snippet'],
+                    metadata=hl.get('metadata', {})
+                )
+                
+                logger.debug(f"  ✓ Generated caption and hashtags")
+                
                 db.create_clip(
                     clip_id=clip_id,
                     job_id=job_id,
@@ -239,7 +254,9 @@ def process_job(job_id: str):
                     title=hl['title'],
                     transcript_snippet=hl['snippet'],
                     thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else "",
-                    metadata=hl.get('metadata', {})
+                    metadata=hl.get('metadata', {}),
+                    caption_text=caption,
+                    hashtags_text=hashtags
                 )
                 
                 logger.debug(f"  ✓ Clip saved to database: {clip_id}")

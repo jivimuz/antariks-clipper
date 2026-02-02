@@ -229,6 +229,20 @@ def init_db():
         cursor.execute("ALTER TABLE clips ADD COLUMN metadata_json TEXT")
         conn.commit()
     
+    # Migration: Add caption_text column to clips if it doesn't exist
+    try:
+        cursor.execute("SELECT caption_text FROM clips LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE clips ADD COLUMN caption_text TEXT")
+        conn.commit()
+    
+    # Migration: Add hashtags_text column to clips if it doesn't exist
+    try:
+        cursor.execute("SELECT hashtags_text FROM clips LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE clips ADD COLUMN hashtags_text TEXT")
+        conn.commit()
+    
     conn.close()
 
 # Job operations
@@ -283,8 +297,9 @@ def update_job(job_id: str, **kwargs):
 # Clip operations
 def create_clip(clip_id: str, job_id: str, start_sec: float, end_sec: float, 
                 score: float = 0, title: str = "", transcript_snippet: str = "",
-                thumbnail_path: str = "", metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Create a new clip with optional metadata"""
+                thumbnail_path: str = "", metadata: Optional[Dict[str, Any]] = None,
+                caption_text: str = "", hashtags_text: str = "") -> Dict[str, Any]:
+    """Create a new clip with optional metadata, caption and hashtags"""
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat()
@@ -293,10 +308,11 @@ def create_clip(clip_id: str, job_id: str, start_sec: float, end_sec: float,
     
     cursor.execute("""
         INSERT INTO clips (id, job_id, start_sec, end_sec, score, title, 
-                          transcript_snippet, thumbnail_path, metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          transcript_snippet, thumbnail_path, metadata_json, 
+                          caption_text, hashtags_text, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (clip_id, job_id, start_sec, end_sec, score, title, transcript_snippet, 
-          thumbnail_path, metadata_json, now))
+          thumbnail_path, metadata_json, caption_text, hashtags_text, now))
     
     conn.commit()
     conn.close()
