@@ -36,10 +36,20 @@ export default function JobsPage() {
   });
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteConfirmTimeout, setDeleteConfirmTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchJobs(pagination.page);
   }, [pagination.page]);  // Refetch when page changes
+
+  // Clear timeout when deleteConfirmId changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimeout) {
+        clearTimeout(deleteConfirmTimeout);
+      }
+    };
+  }, [deleteConfirmId, deleteConfirmTimeout]);
 
   const fetchJobs = async (page: number = 1) => {
     setLoading(true);
@@ -63,13 +73,22 @@ export default function JobsPage() {
   const handleDeleteJob = async (jobId: string) => {
     // First click shows confirmation
     if (deleteConfirmId !== jobId) {
+      // Clear any existing timeout
+      if (deleteConfirmTimeout) {
+        clearTimeout(deleteConfirmTimeout);
+      }
+      
       setDeleteConfirmId(jobId);
+      
       // Auto-reset confirmation after 5 seconds
-      setTimeout(() => {
-        if (deleteConfirmId === jobId) {
-          setDeleteConfirmId(null);
-        }
+      const timeoutId = setTimeout(() => {
+        setDeleteConfirmId((currentId) => {
+          // Only reset if still showing confirmation for this job
+          return currentId === jobId ? null : currentId;
+        });
       }, 5000);
+      
+      setDeleteConfirmTimeout(timeoutId);
       return;
     }
 
@@ -104,6 +123,11 @@ export default function JobsPage() {
       toast.error(errorMessage);
       console.error('Delete error:', error);
     } finally {
+      // Clear the timeout
+      if (deleteConfirmTimeout) {
+        clearTimeout(deleteConfirmTimeout);
+        setDeleteConfirmTimeout(null);
+      }
       setDeletingJobId(null);
       setDeleteConfirmId(null);
     }

@@ -765,12 +765,14 @@ def delete_job(job_id: str):
         # Delete files from filesystem
         deleted_files = []
         failed_files = []
+        total_size_freed = 0
         for file_path in files_to_delete:
             try:
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
                     os.remove(file_path)
                     deleted_files.append(file_path)
+                    total_size_freed += file_size
                     logger.info(f"✓ Deleted file: {file_path} ({file_size / 1024 / 1024:.2f} MB)")
                 else:
                     logger.debug(f"File not found (already deleted?): {file_path}")
@@ -780,8 +782,6 @@ def delete_job(job_id: str):
         
         # Delete database records (cascading deletion)
         db.delete_job(job_id)
-        
-        total_size_freed = sum(os.path.getsize(f) for f in deleted_files if os.path.exists(f))
         
         logger.info(f"✓ Job {job_id} deleted successfully")
         logger.info(f"  - Files deleted: {len(deleted_files)}")
