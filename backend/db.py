@@ -337,6 +337,33 @@ def get_clips_by_job(job_id: str) -> List[Dict[str, Any]]:
         results.append(result)
     return results
 
+
+def delete_clip(clip_id: str) -> bool:
+    """
+    Delete a clip from the database
+    
+    Args:
+        clip_id: The ID of the clip to delete
+    
+    Returns:
+        True if deleted, False if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Check if clip exists
+    cursor.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return False
+    
+    # Delete the clip
+    cursor.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
 # Render operations
 def create_render(render_id: str, clip_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new render"""

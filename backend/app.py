@@ -870,12 +870,8 @@ def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
                 except Exception as e:
                     logger.warning(f"Failed to delete thumbnail: {e}")
             
-            # Delete clip from database
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM clips WHERE id = ?", (clip['id'],))
-            conn.commit()
-            conn.close()
+            # Delete clip from database using db function
+            db.delete_clip(clip['id'])
         
         logger.info(f"Deleted {len(existing_clips)} existing clips")
         
@@ -937,7 +933,7 @@ def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
 
 
 @app.delete("/api/clips/{clip_id}")
-def delete_clip(clip_id: str):
+def delete_clip_endpoint(clip_id: str):
     """
     Delete a clip and its associated renders and files
     """
@@ -973,8 +969,9 @@ def delete_clip(clip_id: str):
             except Exception as e:
                 logger.warning(f"  Failed to delete thumbnail: {e}")
         
-        # Delete clip record
-        cursor.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        # Delete clip record using db function
+        db.delete_clip(clip_id)
+        
         conn.commit()
         conn.close()
         

@@ -126,6 +126,8 @@ def test_highlight_generation_short_video():
     highlights = generate_highlights(transcript)
     
     assert len(highlights) > 0, "Should generate at least one highlight"
+    # Allow flexibility: function returns 12 for 10-min video but actual may vary
+    # based on content quality and overlap constraints
     assert len(highlights) <= 15, f"Should not generate more than 15 clips for 10-min video, got {len(highlights)}"
     
     # Check that highlights have required fields
@@ -184,6 +186,8 @@ def test_highlight_generation_long_video():
     highlights = generate_highlights(transcript, adaptive=True)
     
     assert len(highlights) >= 20, f"Should generate at least 20 clips for 2-hour video, got {len(highlights)}"
+    # Allow up to 35 to account for content quality and overlap removal flexibility
+    # (target is 30 but may be higher if many high-quality non-overlapping segments)
     assert len(highlights) <= 35, f"Should not generate more than 35 clips for 2-hour video, got {len(highlights)}"
     
     # Verify clips are spread throughout the video

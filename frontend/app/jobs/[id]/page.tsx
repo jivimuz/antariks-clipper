@@ -138,13 +138,24 @@ export default function JobDetailPage() {
 
   const regenerateHighlights = async () => {
     if (regenerating) return;
+    
+    // Validate clip count if provided
+    let clipCount = null;
+    if (regenerateClipCount) {
+      clipCount = parseInt(regenerateClipCount, 10);
+      if (isNaN(clipCount) || clipCount < 5 || clipCount > 50) {
+        toast.error('Please enter a valid clip count between 5 and 50');
+        return;
+      }
+    }
+    
     setRegenerating(true);
     try {
       const res = await fetch(`${API_URL}/api/jobs/${jobId}/regenerate-highlights`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clip_count: regenerateClipCount ? parseInt(regenerateClipCount) : null,
+          clip_count: clipCount,
           adaptive: true
         })
       });

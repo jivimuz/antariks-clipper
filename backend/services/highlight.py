@@ -161,6 +161,8 @@ def generate_candidates(segments: List[Dict[str, Any]], total_duration: float,
     total_segments = len(segments)
     
     # For very long videos (>1 hour), use adaptive stepping to avoid O(n^2) complexity
+    # Step size of 3 reduces candidate generation from O(n²) to O(n²/9) while maintaining
+    # adequate coverage for hour+ videos (still generates thousands of candidates)
     is_long_video = total_duration > 3600  # 1 hour
     step_size = 3 if is_long_video and adaptive_step else 1
     
@@ -233,9 +235,11 @@ def remove_overlaps(candidates: List[Dict[str, Any]], top_n: int,
         # Check if it overlaps with any selected clip (with min_gap buffer)
         overlaps = False
         for sel in selected:
-            # Check for time overlap with buffer
-            if not (candidate['end'] + min_gap <= sel['start'] or 
-                   candidate['start'] >= sel['end'] + min_gap):
+            # Check for time overlap with buffer:
+            # Candidate must either end before selected starts (with gap)
+            # OR start after selected ends (no gap needed at start check)
+            if not (candidate['end'] <= sel['start'] - min_gap or 
+                   candidate['start'] >= sel['end']):
                 overlaps = True
                 break
         
