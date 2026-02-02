@@ -123,11 +123,12 @@ class FaceTracker:
                         face_center_x = fx + fw // 2
                         face_center_y = fy + fh // 2
                         
-                        distance = ((mouth_center_x - face_center_x) ** 2 + 
-                                   (mouth_center_y - face_center_y) ** 2) ** 0.5
+                        # Use squared distance for efficiency (no need for sqrt)
+                        distance_sq = ((mouth_center_x - face_center_x) ** 2 + 
+                                      (mouth_center_y - face_center_y) ** 2)
                         
-                        if distance < best_distance:
-                            best_distance = distance
+                        if distance_sq < best_distance:
+                            best_distance = distance_sq
                             best_match_id = face['id']
                     
                     if best_match_id is not None:

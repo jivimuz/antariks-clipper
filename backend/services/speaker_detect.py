@@ -155,4 +155,5 @@ class SpeakerDetector:
                     best_variance = variance
                     best_speaker = speaker_id
         
+        # Fallback to first speaker if no valid variance found
         return best_speaker if best_speaker is not None else speakers[0]

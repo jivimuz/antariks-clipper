@@ -30,7 +30,9 @@ class SmartCropper:
         target_aspect = output_width / output_height
         desired_crop_width = int(video_height * target_aspect)
         
-        # Ensure crop width doesn't exceed video width
+        # Ensure crop width is positive and doesn't exceed video width
+        if desired_crop_width <= 0:
+            desired_crop_width = video_width
         self.crop_width = min(desired_crop_width, video_width)
         self.crop_height = video_height
         
