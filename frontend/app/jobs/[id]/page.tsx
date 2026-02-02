@@ -8,7 +8,7 @@ import {
   ArrowLeft, Play, CheckCircle2, Clock, AlertCircle, 
   Settings2, Download, Check, X, Wand2, FileText, 
   ScanFace, Share2, MoreVertical, Loader2, Youtube, FileVideo,
-  ChevronLeft, ChevronRight, Users
+  ChevronLeft, ChevronRight, Users, Copy, Hash
 } from 'lucide-react';
 import { getApiUrl, getApiEndpoint } from '@/lib/api';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -31,6 +31,8 @@ interface Clip {
   score: number;
   title: string;
   transcript_snippet: string;
+  caption_text?: string;
+  hashtags_text?: string;
 }
 
 interface Render {
@@ -570,6 +572,57 @@ export default function JobDetailPage() {
                              "{activeClip.transcript_snippet}"
                            </p>
                         </div>
+
+                        {/* Caption & Hashtags Panel */}
+                        {(activeClip.caption_text || activeClip.hashtags_text) && (
+                          <div className="bg-gradient-to-br from-emerald-900/20 to-blue-900/20 rounded-xl p-5 mb-6 border border-emerald-500/20 space-y-4">
+                            {/* Caption Section */}
+                            {activeClip.caption_text && (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-xs uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
+                                    <FileText size={14} /> Social Media Caption
+                                  </h4>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(activeClip.caption_text || '');
+                                      toast.success('Caption copied to clipboard!');
+                                    }}
+                                    className="px-3 py-1.5 bg-emerald-700/50 hover:bg-emerald-600/70 rounded-lg text-emerald-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                  >
+                                    <Copy size={12} /> Copy Caption
+                                  </button>
+                                </div>
+                                <p className="text-slate-200 leading-relaxed text-sm whitespace-pre-line">
+                                  {activeClip.caption_text}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Hashtags Section */}
+                            {activeClip.hashtags_text && (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-xs uppercase tracking-wider text-blue-400 font-semibold flex items-center gap-2">
+                                    <Hash size={14} /> Hashtags
+                                  </h4>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(activeClip.hashtags_text || '');
+                                      toast.success('Hashtags copied to clipboard!');
+                                    }}
+                                    className="px-3 py-1.5 bg-blue-700/50 hover:bg-blue-600/70 rounded-lg text-blue-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                  >
+                                    <Copy size={12} /> Copy Hashtags
+                                  </button>
+                                </div>
+                                <p className="text-blue-200 leading-relaxed text-sm font-medium">
+                                  {activeClip.hashtags_text}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Action Bar inside Preview */}
                         <div className="mt-auto border-t border-white/5 pt-6 flex flex-wrap items-center justify-between gap-4">
