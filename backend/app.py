@@ -819,6 +819,177 @@ def get_job_clips(job_id: str):
         logger.error(f"Get clips error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class RegenerateHighlightsRequest(BaseModel):
+    clip_count: Optional[int] = None  # None = auto-calculate
+    adaptive: bool = True
+
+
+@app.post("/api/jobs/{job_id}/regenerate-highlights")
+def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
+    """
+    Regenerate highlight clips for a job with custom parameters.
+    Deletes existing clips and generates new ones.
+    """
+    try:
+        from services.transcribe import load_transcript
+        from services.highlight import generate_highlights
+        from services.thumbnails import generate_thumbnail
+        from pathlib import Path
+        
+        job = db.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if job['status'] != 'ready':
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Job must be in 'ready' status to regenerate highlights. Current: {job['status']}"
+            )
+        
+        # Load transcript
+        transcript_path = Path(config.TRANSCRIPTS_DIR) / f"{job_id}.json"
+        if not transcript_path.exists():
+            raise HTTPException(status_code=404, detail="Transcript not found")
+        
+        transcript = load_transcript(transcript_path)
+        if not transcript or not transcript.get('segments'):
+            raise HTTPException(status_code=400, detail="Invalid transcript data")
+        
+        logger.info(f"Regenerating highlights for job {job_id}")
+        logger.info(f"  Clip count: {payload.clip_count or 'auto'}")
+        logger.info(f"  Adaptive: {payload.adaptive}")
+        
+        # Delete existing clips
+        existing_clips = db.get_clips_by_job(job_id)
+        for clip in existing_clips:
+            # Delete thumbnail if exists
+            if clip.get('thumbnail_path'):
+                try:
+                    Path(clip['thumbnail_path']).unlink(missing_ok=True)
+                except Exception as e:
+                    logger.warning(f"Failed to delete thumbnail: {e}")
+            
+            # Delete clip from database using db function
+            db.delete_clip(clip['id'])
+        
+        logger.info(f"Deleted {len(existing_clips)} existing clips")
+        
+        # Generate new highlights
+        highlights = generate_highlights(
+            transcript, 
+            top_n=payload.clip_count,
+            adaptive=payload.adaptive
+        )
+        
+        if not highlights:
+            raise HTTPException(status_code=500, detail="Failed to generate highlights")
+        
+        # Get raw video path for thumbnails
+        raw_path = Path(job['raw_path']) if job.get('raw_path') else None
+        if not raw_path or not raw_path.exists():
+            raise HTTPException(status_code=404, detail="Video file not found")
+        
+        # Create new clips with thumbnails
+        created_clips = []
+        for i, hl in enumerate(highlights):
+            clip_id = str(uuid.uuid4())
+            
+            logger.info(f"Creating clip {i+1}/{len(highlights)}: {hl['title']}")
+            
+            mid_time = (hl['start'] + hl['end']) / 2
+            thumbnail_path = Path(config.THUMBNAILS_DIR) / f"{clip_id}.jpg"
+            
+            generate_thumbnail(raw_path, mid_time, thumbnail_path)
+            
+            clip = db.create_clip(
+                clip_id=clip_id,
+                job_id=job_id,
+                start_sec=hl['start'],
+                end_sec=hl['end'],
+                score=hl['score'],
+                title=hl['title'],
+                transcript_snippet=hl['snippet'],
+                thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else "",
+                metadata=hl.get('metadata', {})
+            )
+            created_clips.append(clip)
+        
+        logger.info(f"Created {len(created_clips)} new clips")
+        
+        return {
+            "success": True,
+            "deleted": len(existing_clips),
+            "created": len(created_clips),
+            "clips": created_clips
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Regenerate highlights error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.delete("/api/clips/{clip_id}")
+def delete_clip_endpoint(clip_id: str):
+    """
+    Delete a clip and its associated renders and files
+    """
+    try:
+        clip = db.get_clip(clip_id)
+        if not clip:
+            raise HTTPException(status_code=404, detail="Clip not found")
+        
+        logger.info(f"Deleting clip {clip_id}")
+        
+        # Get associated renders
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM renders WHERE clip_id = ?", (clip_id,))
+        renders = [dict(row) for row in cursor.fetchall()]
+        
+        # Delete render files and records
+        for render in renders:
+            if render.get('output_path'):
+                try:
+                    Path(render['output_path']).unlink(missing_ok=True)
+                    logger.info(f"  Deleted render file: {render['output_path']}")
+                except Exception as e:
+                    logger.warning(f"  Failed to delete render file: {e}")
+            
+            cursor.execute("DELETE FROM renders WHERE id = ?", (render['id'],))
+        
+        # Delete thumbnail
+        if clip.get('thumbnail_path'):
+            try:
+                Path(clip['thumbnail_path']).unlink(missing_ok=True)
+                logger.info(f"  Deleted thumbnail: {clip['thumbnail_path']}")
+            except Exception as e:
+                logger.warning(f"  Failed to delete thumbnail: {e}")
+        
+        # Delete clip record using db function
+        db.delete_clip(clip_id)
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"  Deleted clip {clip_id} and {len(renders)} associated renders")
+        
+        return {
+            "success": True,
+            "clip_id": clip_id,
+            "deleted_renders": len(renders)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete clip error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/clips/{clip_id}/render")
 def create_render(clip_id: str, options: RenderCreate):
     """Create a render job for a clip"""

@@ -116,6 +116,74 @@ export default function JobDetailPage() {
     }
   };
 
+  // State for regenerate highlights
+  const [regenerating, setRegenerating] = useState(false);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [regenerateClipCount, setRegenerateClipCount] = useState<string>('');
+
+  // State for filters and sorting
+  const [sortBy, setSortBy] = useState<'score' | 'duration' | 'time'>('score');
+  const [minScore, setMinScore] = useState<number>(0);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter and sort clips
+  const filteredAndSortedClips = clips
+    .filter(clip => clip.score >= minScore)
+    .sort((a, b) => {
+      if (sortBy === 'score') return b.score - a.score;
+      if (sortBy === 'duration') return (b.end_sec - b.start_sec) - (a.end_sec - a.start_sec);
+      if (sortBy === 'time') return a.start_sec - b.start_sec;
+      return 0;
+    });
+
+  const regenerateHighlights = async () => {
+    if (regenerating) return;
+    
+    // Validate clip count if provided
+    let clipCount = null;
+    if (regenerateClipCount) {
+      clipCount = parseInt(regenerateClipCount, 10);
+      if (isNaN(clipCount) || clipCount < 5 || clipCount > 50) {
+        toast.error('Please enter a valid clip count between 5 and 50');
+        return;
+      }
+    }
+    
+    setRegenerating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/jobs/${jobId}/regenerate-highlights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clip_count: clipCount,
+          adaptive: true
+        })
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.detail || 'Failed to regenerate highlights');
+        return;
+      }
+      
+      const data = await res.json();
+      toast.success(`Regenerated ${data.created} highlights!`);
+      
+      // Refresh clips
+      const clipsRes = await fetch(`${API_URL}/api/jobs/${jobId}/clips`);
+      const clipsData = await clipsRes.json();
+      setClips(clipsData.clips || []);
+      setSelectedClips(new Set());
+      setShowRegenerateModal(false);
+      setRegenerateClipCount('');
+    } catch (error) {
+      console.error('Regenerate error:', error);
+      toast.error('Error regenerating highlights');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
 
   // Fetch job (Real Logic)
   useEffect(() => {
@@ -352,6 +420,87 @@ export default function JobDetailPage() {
             <div className="flex flex-col sm:flex-row gap-2 mt-4">
               <button onClick={addBatchClipRow} className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded font-bold" aria-label="Add new clip row">Add Row</button>
               <button onClick={submitBatchClips} disabled={batchLoading} className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded font-bold disabled:opacity-60" aria-label="Save all clips">{batchLoading ? 'Saving...' : 'Save Clips'}</button>
+            </div>
+          </div>
+        )}
+
+        {/* Regenerate Highlights Section */}
+        {job.status === 'ready' && (
+          <div className="mb-6 sm:mb-10 bg-gradient-to-br from-slate-900/70 to-slate-800/50 border border-white/10 rounded-2xl p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold mb-2 text-white flex items-center gap-2">
+                  <Wand2 size={20} className="text-emerald-400" />
+                  Regenerate Highlights
+                </h2>
+                <p className="text-sm text-slate-400">
+                  Generate new highlight clips with custom parameters. Current: {clips.length} clips
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRegenerateModal(true)}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-lg"
+              >
+                <Wand2 size={16} />
+                Regenerate
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Regenerate Modal */}
+        {showRegenerateModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowRegenerateModal(false)}>
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <Wand2 size={20} className="text-emerald-400" />
+                Regenerate Highlights
+              </h3>
+              <p className="text-sm text-slate-400 mb-6">
+                This will delete all existing clips and generate new ones. This action cannot be undone.
+              </p>
+              
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Number of clips (leave empty for auto)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="50"
+                  placeholder="Auto (based on video length)"
+                  value={regenerateClipCount}
+                  onChange={(e) => setRegenerateClipCount(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-800 text-white border border-white/10 focus:border-emerald-500 focus:outline-none"
+                />
+                <p className="text-xs text-slate-500 mt-2">
+                  Auto: 5-50 clips based on video duration
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowRegenerateModal(false)}
+                  className="flex-1 px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                  disabled={regenerating}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={regenerateHighlights}
+                  disabled={regenerating}
+                  className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold hover:from-emerald-500 hover:to-teal-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {regenerating ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Generating...
+                    </>
+                  ) : (
+                    'Generate'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -596,9 +745,66 @@ export default function JobDetailPage() {
                </div>
             </div>
 
+            {/* Filter and Sort Bar */}
+            <div className="mb-6 bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2"
+                  >
+                    <Settings2 size={16} />
+                    {showFilters ? 'Hide Filters' : 'Show Filters'}
+                  </button>
+                  <div className="text-sm text-slate-400">
+                    <span className="text-white font-bold">{filteredAndSortedClips.length}</span> of <span className="text-white font-bold">{clips.length}</span> clips
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-slate-400">Sort by:</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'score' | 'duration' | 'time')}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-sm border border-white/10 focus:border-emerald-500 focus:outline-none"
+                  >
+                    <option value="score">Score (High to Low)</option>
+                    <option value="duration">Duration (Long to Short)</option>
+                    <option value="time">Timeline (Start to End)</option>
+                  </select>
+                </div>
+              </div>
+              
+              {showFilters && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Minimum Score: {minScore.toFixed(1)}
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={minScore}
+                        onChange={(e) => setMinScore(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>0</span>
+                        <span>5</span>
+                        <span>10</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Clips Grid */}
             <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
-              {clips.map((clip) => (
+              {filteredAndSortedClips.map((clip) => (
                 <div
                   key={clip.id}
                   onClick={() => setPreviewClipId(clip.id)}

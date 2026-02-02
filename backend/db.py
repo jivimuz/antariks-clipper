@@ -222,6 +222,13 @@ def init_db():
         cursor.execute("ALTER TABLE jobs ADD COLUMN s3_url TEXT")
         conn.commit()
     
+    # Migration: Add metadata_json column to clips if it doesn't exist
+    try:
+        cursor.execute("SELECT metadata_json FROM clips LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE clips ADD COLUMN metadata_json TEXT")
+        conn.commit()
+    
     conn.close()
 
 # Job operations
@@ -276,40 +283,86 @@ def update_job(job_id: str, **kwargs):
 # Clip operations
 def create_clip(clip_id: str, job_id: str, start_sec: float, end_sec: float, 
                 score: float = 0, title: str = "", transcript_snippet: str = "",
-                thumbnail_path: str = "") -> Dict[str, Any]:
-    """Create a new clip"""
+                thumbnail_path: str = "", metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create a new clip with optional metadata"""
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat()
     
+    metadata_json = json.dumps(metadata) if metadata else None
+    
     cursor.execute("""
         INSERT INTO clips (id, job_id, start_sec, end_sec, score, title, 
-                          transcript_snippet, thumbnail_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          transcript_snippet, thumbnail_path, metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (clip_id, job_id, start_sec, end_sec, score, title, transcript_snippet, 
-          thumbnail_path, now))
+          thumbnail_path, metadata_json, now))
     
     conn.commit()
     conn.close()
     return get_clip(clip_id)
 
 def get_clip(clip_id: str) -> Optional[Dict[str, Any]]:
-    """Get clip by ID"""
+    """Get clip by ID with metadata parsed"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
     row = cursor.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if row:
+        result = dict(row)
+        if result.get('metadata_json'):
+            try:
+                result['metadata'] = json.loads(result['metadata_json'])
+            except:
+                result['metadata'] = {}
+        return result
+    return None
 
 def get_clips_by_job(job_id: str) -> List[Dict[str, Any]]:
-    """Get all clips for a job"""
+    """Get all clips for a job with metadata parsed"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM clips WHERE job_id = ? ORDER BY score DESC", (job_id,))
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    results = []
+    for row in rows:
+        result = dict(row)
+        if result.get('metadata_json'):
+            try:
+                result['metadata'] = json.loads(result['metadata_json'])
+            except:
+                result['metadata'] = {}
+        results.append(result)
+    return results
+
+
+def delete_clip(clip_id: str) -> bool:
+    """
+    Delete a clip from the database
+    
+    Args:
+        clip_id: The ID of the clip to delete
+    
+    Returns:
+        True if deleted, False if not found
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Check if clip exists
+    cursor.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return False
+    
+    # Delete the clip
+    cursor.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+    conn.commit()
+    conn.close()
+    return True
+
 
 # Render operations
 def create_render(render_id: str, clip_id: str, options: Dict[str, Any]) -> Dict[str, Any]:

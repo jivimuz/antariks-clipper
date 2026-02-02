@@ -238,7 +238,8 @@ def process_job(job_id: str):
                     score=hl['score'],
                     title=hl['title'],
                     transcript_snippet=hl['snippet'],
-                    thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else ""
+                    thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else "",
+                    metadata=hl.get('metadata', {})
                 )
                 
                 logger.debug(f"  ✓ Clip saved to database: {clip_id}")
