@@ -497,12 +497,27 @@ def register_render_webhook(render_id: str, payload: WebhookRegister):
 def create_clips(job_id: str, payload: MultiClipCreate):
     """Create multiple clips for a job"""
     try:
+        from services.caption_generator import generate_caption, generate_hashtags
+        
         job = db.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         created = []
         for clip in payload.clips:
             clip_id = str(uuid.uuid4())
+            
+            # Generate caption and hashtags for manually created clips
+            caption = generate_caption(
+                title=clip.title,
+                transcript_snippet=clip.transcript_snippet,
+                metadata={}
+            )
+            hashtags = generate_hashtags(
+                title=clip.title,
+                transcript_snippet=clip.transcript_snippet,
+                metadata={}
+            )
+            
             new_clip = db.create_clip(
                 clip_id=clip_id,
                 job_id=job_id,
@@ -511,7 +526,9 @@ def create_clips(job_id: str, payload: MultiClipCreate):
                 score=clip.score,
                 title=clip.title,
                 transcript_snippet=clip.transcript_snippet,
-                thumbnail_path=clip.thumbnail_path
+                thumbnail_path=clip.thumbnail_path,
+                caption_text=caption,
+                hashtags_text=hashtags
             )
             created.append(new_clip)
         return {"created": created, "count": len(created)}
@@ -835,6 +852,7 @@ def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
         from services.transcribe import load_transcript
         from services.highlight import generate_highlights
         from services.thumbnails import generate_thumbnail
+        from services.caption_generator import generate_caption, generate_hashtags
         from pathlib import Path
         
         job = db.get_job(job_id)
@@ -902,6 +920,18 @@ def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
             
             generate_thumbnail(raw_path, mid_time, thumbnail_path)
             
+            # Generate caption and hashtags
+            caption = generate_caption(
+                title=hl['title'],
+                transcript_snippet=hl['snippet'],
+                metadata=hl.get('metadata', {})
+            )
+            hashtags = generate_hashtags(
+                title=hl['title'],
+                transcript_snippet=hl['snippet'],
+                metadata=hl.get('metadata', {})
+            )
+            
             clip = db.create_clip(
                 clip_id=clip_id,
                 job_id=job_id,
@@ -911,7 +941,9 @@ def regenerate_highlights(job_id: str, payload: RegenerateHighlightsRequest):
                 title=hl['title'],
                 transcript_snippet=hl['snippet'],
                 thumbnail_path=str(thumbnail_path) if thumbnail_path.exists() else "",
-                metadata=hl.get('metadata', {})
+                metadata=hl.get('metadata', {}),
+                caption_text=caption,
+                hashtags_text=hashtags
             )
             created_clips.append(clip)
         
