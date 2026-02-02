@@ -22,6 +22,10 @@ Auto-generate viral highlight clips from YouTube videos or manual uploads. Outpu
 - ✅ **Batch Selection**: Select multiple clips for batch rendering
 - 📊 **Rich Metadata**: Each clip includes keyword categories and content analysis
 - 📋 **Preview Interface**: Preview clips before rendering
+- 📱 **Social Media Ready**: Auto-generated captions and hashtags for TikTok, Instagram Reels, Facebook Shorts
+  - **Smart Captions**: Context-aware captions with emojis based on content category
+  - **Auto Hashtags**: Default tags (#fyp #viral #antariksclipper) plus content-specific tags
+  - **One-Click Copy**: Easy copy-to-clipboard for captions and hashtags
 - 🚀 **Simple Setup**: No Docker, Redis, or complex dependencies
 
 ## Quick Start
@@ -91,8 +95,43 @@ Frontend will be available at http://localhost:3000
    - Use "Select All" to select all visible clips
    - Click "Render N Clips" to batch render selected clips
 7. Preview clips before rendering (click any clip to preview)
-8. Render clips with optional face tracking, smart crop, or captions
-9. Download vertical 9:16 videos ready for social media
+8. **View auto-generated captions and hashtags** in the preview panel:
+   - 📝 **Caption**: Context-aware text with emojis ready for social media
+   - 🏷️ **Hashtags**: Auto-generated tags optimized for reach (#fyp #viral #antariksclipper + content-specific)
+   - 📋 **One-click copy**: Click copy buttons to copy caption or hashtags to clipboard
+9. Render clips with optional face tracking, smart crop, or captions
+10. Download vertical 9:16 videos ready for social media
+11. Copy the caption and hashtags when posting to TikTok, Instagram Reels, or Facebook Shorts
+
+### Social Media Caption & Hashtags
+
+Each clip automatically includes:
+
+- **Smart Caption**: 
+  - Contextual text based on clip content
+  - Emoji indicators (⚠️ Important, 💡 Key Point, 📚 Tutorial, 📌 Summary)
+  - Call-to-action to boost engagement
+  - Ready for TikTok, Instagram Reels, Facebook Shorts
+
+- **Auto Hashtags**:
+  - Default tags: `#fyp #viral #antariksclipper`
+  - Category-based tags (teaching → `#tutorial #howto #learn`)
+  - Topic keywords extracted from clip title
+  - Platform-optimized tags: `#reels #shorts #contentcreator`
+  - Up to 15 hashtags to maximize reach without spam
+
+**Example Output**:
+```
+Caption:
+⚠️ Important Tutorial: How to Build APIs
+
+This is a crucial tip that every developer needs to know
+
+💬 What do you think? Comment below!
+
+Hashtags:
+#fyp #viral #antariksclipper #important #musttknow #tips #tutorial #build #apis #reels #shorts #contentcreator
+```
 
 ### Advanced Usage
 
@@ -223,6 +262,21 @@ Tests include:
 - **`DELETE /api/clips/{clip_id}`** - ✨ NEW: Delete individual clip
 - `GET /api/clips/{clip_id}/preview` - Preview clip stream
 - `GET /api/clips/{clip_id}/preview-frame` - Get preview thumbnail
+
+**Clip Response (includes caption & hashtags)**:
+```json
+{
+  "id": "clip-uuid",
+  "job_id": "job-uuid",
+  "start_sec": 10.5,
+  "end_sec": 45.2,
+  "score": 85.3,
+  "title": "Important Tutorial",
+  "transcript_snippet": "This is the clip content...",
+  "caption_text": "⚠️ Important Tutorial\n\nThis is the clip content...\n\n💬 What do you think?",
+  "hashtags_text": "#fyp #viral #antariksclipper #important #tutorial #reels #shorts"
+}
+```
 
 ### Renders
 - `POST /api/clips/{clip_id}/render` - Create render job
