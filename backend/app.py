@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from config import RAW_DIR
+import config
 from services.cloud import upload_file_to_s3
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
@@ -595,11 +596,39 @@ async def create_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/jobs")
-def list_jobs(limit: int = 100):
-    """List all jobs"""
+def list_jobs(page: int = 1, limit: int = 20):
+    """
+    List all jobs with pagination
+    
+    Args:
+        page: Page number (1-indexed)
+        limit: Number of jobs per page (max 100)
+    
+    Returns:
+        jobs: List of jobs
+        page: Current page
+        limit: Items per page
+        total: Total number of jobs
+        total_pages: Total number of pages
+    """
     try:
-        jobs = db.get_all_jobs(limit=limit)
-        return {"jobs": jobs}
+        # Validate and constrain parameters
+        page = max(1, page)
+        limit = max(1, min(100, limit))
+        offset = (page - 1) * limit
+        
+        # Get jobs and total count
+        jobs = db.get_all_jobs(limit=limit, offset=offset)
+        total = db.get_total_jobs_count()
+        total_pages = max(1, (total + limit - 1) // limit)  # Ceiling division, min 1
+        
+        return {
+            "jobs": jobs,
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": total_pages
+        }
     except Exception as e:
         logger.error(f"List jobs error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -656,6 +685,82 @@ def retry_job(job_id: str):
         raise
     except Exception as e:
         logger.error(f"Retry job error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str):
+    """
+    Delete a job and all associated data including:
+    - All clips and renders
+    - Raw video file
+    - Normalized video file
+    - Transcripts
+    - Thumbnails
+    - Rendered videos
+    """
+    try:
+        job = db.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Get all associated data before deletion
+        clips = db.get_clips_by_job(job_id)
+        renders = db.get_renders_by_job(job_id)
+        
+        # Delete files
+        files_to_delete = []
+        
+        # Add job files
+        if job.get('raw_path'):
+            files_to_delete.append(job['raw_path'])
+        if job.get('normalized_path'):
+            files_to_delete.append(job['normalized_path'])
+        
+        # Add transcript file
+        transcript_path = Path(config.TRANSCRIPTS_DIR) / f"{job_id}.json"
+        if transcript_path.exists():
+            files_to_delete.append(str(transcript_path))
+        
+        # Add clip thumbnails
+        for clip in clips:
+            if clip.get('thumbnail_path'):
+                files_to_delete.append(clip['thumbnail_path'])
+        
+        # Add render output files
+        for render in renders:
+            if render.get('output_path'):
+                files_to_delete.append(render['output_path'])
+        
+        # Delete files from filesystem
+        deleted_files = []
+        failed_files = []
+        for file_path in files_to_delete:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    deleted_files.append(file_path)
+                    logger.info(f"✓ Deleted file: {file_path}")
+            except Exception as e:
+                logger.error(f"❌ Failed to delete file {file_path}: {e}")
+                failed_files.append(file_path)
+        
+        # Delete database records (cascading deletion)
+        db.delete_job(job_id)
+        
+        logger.info(f"✓ Job {job_id} deleted successfully. Files deleted: {len(deleted_files)}, Failed: {len(failed_files)}")
+        
+        return {
+            "message": "Job deleted successfully",
+            "job_id": job_id,
+            "files_deleted": len(deleted_files),
+            "files_failed": len(failed_files),
+            "failed_files": failed_files if failed_files else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete job error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/jobs/{job_id}/clips")

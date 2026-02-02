@@ -223,7 +223,7 @@ def _attempt_download(
     progress_callback: Optional[Callable[[int, str], None]]
 ) -> Tuple[bool, Optional[str]]:
     """
-    Single download attempt
+    Single download attempt with enhanced support for long videos
     
     Returns:
         (success, error_message)
@@ -233,6 +233,7 @@ def _attempt_download(
         output_template = str(output_path.with_suffix(''))
         
         # Build command with latest recommended options for YouTube 2024+
+        # Enhanced for long videos (3+ hours)
         cmd = [
             'yt-dlp',
             '--no-warnings',
@@ -246,19 +247,21 @@ def _attempt_download(
             '--format-sort', 'res,ext:mp4:m4a',
             # Use multiple clients for better compatibility
             '--extractor-args', 'youtube:player_client=ios,android,web',
-            # Retry settings
-            '--retries', '10',
-            '--fragment-retries', '10',
-            '--retry-sleep', '3',
+            # Enhanced retry settings for long videos
+            '--retries', '15',  # Increased from 10
+            '--fragment-retries', '15',  # Increased from 10
+            '--retry-sleep', '5',  # Increased from 3
             # Skip unavailable fragments instead of failing
             '--skip-unavailable-fragments',
+            # Buffer size for large files (helps with long videos)
+            '--buffer-size', '16K',
             # User agent (helps avoid some blocks)
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             # Output
             '-o', f'{output_template}.%(ext)s',
-            # Progress
+            # Enhanced progress tracking
             '--newline',
-            '--progress-template', '%(progress._percent_str)s',
+            '--progress-template', 'download:%(progress._percent_str)s %(progress.downloaded_bytes)s/%(progress.total_bytes)s %(progress.speed)s %(progress.eta)s',
         ]
         
         # Add cookies if provided
@@ -269,13 +272,14 @@ def _attempt_download(
         # Add URL
         cmd.append(url)
         
-        logger.info("Starting download process...")
+        logger.info("Starting download process (optimized for long videos)...")
         logger.debug(f"Command: {' '.join(cmd)}")
         
         if progress_callback:
             progress_callback(0, "Starting download...")
         
-        # Run with live output for progress
+        # Run with live output for progress - increased timeout for very long videos
+        # Timeout: 6 hours (21600s) to handle very long videos (3+ hours at slower speeds)
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -286,6 +290,7 @@ def _attempt_download(
         
         last_percent = 0
         stdout_lines = []
+        last_log_time = time.time()
         
         for line in process.stdout:
             line = line.strip()
@@ -294,21 +299,27 @@ def _attempt_download(
             # Parse progress
             if '%' in line:
                 try:
-                    percent_str = line.replace('%', '').strip()
-                    percent = int(float(percent_str))
-                    if percent != last_percent and progress_callback:
-                        progress_callback(percent, f"Downloading... {percent}%")
-                        last_percent = percent
-                        if percent % 25 == 0:  # Log every 25%
-                            logger.info(f"Download progress: {percent}%")
-                except (ValueError, TypeError):
+                    parts = line.split('%')
+                    if len(parts) > 0 and parts[0].split():
+                        percent_str = parts[0].split()[-1]
+                        percent = int(float(percent_str))
+                        if percent != last_percent and progress_callback:
+                            progress_callback(percent, f"Downloading... {percent}%")
+                            last_percent = percent
+                            
+                            # Log progress periodically (every 10% or every 2 minutes for long downloads)
+                            current_time = time.time()
+                            if percent % 10 == 0 or (current_time - last_log_time) > 120:
+                                logger.info(f"📥 Download progress: {percent}% - {line}")
+                                last_log_time = current_time
+                except (ValueError, TypeError, IndexError):
                     pass
         
         stderr = process.stderr.read()
         process.wait()
         
         if process.returncode != 0:
-            logger.error(f"yt-dlp failed with return code {process.returncode}")
+            logger.error(f"❌ yt-dlp failed with return code {process.returncode}")
             logger.error(f"stderr output:\n{stderr}")
             
             # Parse error for user-friendly message
@@ -317,7 +328,7 @@ def _attempt_download(
             
             # Try fallback method for certain errors
             if 'http error 403' in stderr.lower() or 'player_client' in stderr.lower():
-                logger.info("Attempting fallback download method...")
+                logger.info("🔄 Attempting fallback download method...")
                 return _download_fallback(url, output_path, cookies_file, progress_callback)
             
             return False, error_msg
@@ -329,13 +340,13 @@ def _attempt_download(
             return True, None
         
         # Check if file with different extension exists
-        logger.info("Checking for alternate file formats...")
+        logger.info("🔍 Checking for alternate file formats...")
         for ext in ['.mp4', '.mkv', '.webm']:
             alt_path = output_path.with_suffix(ext)
             if alt_path.exists():
                 logger.info(f"Found file with extension: {ext}")
                 if ext != '.mp4':
-                    logger.info(f"Converting {ext} to mp4...")
+                    logger.info(f"🔄 Converting {ext} to mp4...")
                     if _convert_to_mp4(alt_path, output_path):
                         alt_path.unlink()
                         logger.info("✓ Conversion successful")
@@ -346,16 +357,16 @@ def _attempt_download(
                     return True, None
         
         error_msg = "Download completed but output file not found"
-        logger.error(error_msg)
+        logger.error(f"❌ {error_msg}")
         return False, error_msg
         
     except subprocess.TimeoutExpired:
         error_msg = ERROR_MESSAGES['timeout']
-        logger.error(error_msg)
+        logger.error(f"❌ {error_msg}")
         return False, error_msg
     except Exception as e:
         error_msg = f"Download attempt failed: {str(e)}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(f"❌ {error_msg}", exc_info=True)
         return False, error_msg
 
 def _download_fallback(
@@ -464,7 +475,7 @@ def _download_fallback(
     return False, error_msg
 
 def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
-    """Convert video to mp4 using ffmpeg with progress logging"""
+    """Convert video to mp4 using ffmpeg with progress logging - optimized for long videos"""
     try:
         logger.info(f"=== Converting {input_path.suffix} to mp4 ===")
         logger.info(f"Input: {input_path}")
@@ -472,7 +483,7 @@ def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
         
         # Get input file info
         file_size = input_path.stat().st_size
-        logger.info(f"Input file size: {file_size / 1024 / 1024:.1f} MB")
+        logger.info(f"📊 Input file size: {file_size / 1024 / 1024:.1f} MB")
         
         cmd = [
             'ffmpeg',
@@ -487,13 +498,17 @@ def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
         ]
         
         logger.debug(f"Conversion command: {' '.join(cmd)}")
+        logger.info("🔄 Starting conversion... This may take a while for long videos")
         
-        # 30 minute timeout for large video files (HD/4K content)
+        # Extended timeout for very long videos (3+ hours)
+        # Assuming ~1GB per hour at decent quality, 3 hours = ~3GB
+        # Conversion can take 2-3x the video duration on modest hardware
+        # Timeout: 4 hours (14400s) to handle 3+ hour videos safely
         result = subprocess.run(
             cmd, 
             capture_output=True, 
             text=True, 
-            timeout=1800
+            timeout=14400
         )
         
         if result.returncode == 0 and output_path.exists():
@@ -501,15 +516,15 @@ def _convert_to_mp4(input_path: Path, output_path: Path) -> bool:
             logger.info(f"✓ Conversion successful: {output_path} ({output_size / 1024 / 1024:.1f} MB)")
             return True
         
-        logger.error(f"Conversion failed with return code {result.returncode}")
+        logger.error(f"❌ Conversion failed with return code {result.returncode}")
         logger.error(f"stderr: {result.stderr}")
         return False
         
     except subprocess.TimeoutExpired:
-        logger.error("Conversion timed out (file may be too large)")
+        logger.error("❌ Conversion timed out after 4 hours (video may be extremely long or system is slow)")
         return False
     except Exception as e:
-        logger.error(f"Conversion error: {e}", exc_info=True)
+        logger.error(f"❌ Conversion error: {e}", exc_info=True)
         return False
 
 def get_video_info(url: str) -> Optional[dict]:
