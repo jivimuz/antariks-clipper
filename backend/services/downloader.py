@@ -259,10 +259,8 @@ def _attempt_download(
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             # Output
             '-o', f'{output_template}.%(ext)s',
-            # Progress
-            '--newline',
-            '--progress-template', '%(progress._percent_str)s',
             # Enhanced progress tracking
+            '--newline',
             '--progress-template', 'download:%(progress._percent_str)s %(progress.downloaded_bytes)s/%(progress.total_bytes)s %(progress.speed)s %(progress.eta)s',
         ]
         
@@ -301,17 +299,19 @@ def _attempt_download(
             # Parse progress
             if '%' in line:
                 try:
-                    percent_str = line.split('%')[0].split()[-1]
-                    percent = int(float(percent_str))
-                    if percent != last_percent and progress_callback:
-                        progress_callback(percent, f"Downloading... {percent}%")
-                        last_percent = percent
-                        
-                        # Log progress periodically (every 10% or every 2 minutes for long downloads)
-                        current_time = time.time()
-                        if percent % 10 == 0 or (current_time - last_log_time) > 120:
-                            logger.info(f"📥 Download progress: {percent}% - {line}")
-                            last_log_time = current_time
+                    parts = line.split('%')
+                    if len(parts) > 0 and parts[0].split():
+                        percent_str = parts[0].split()[-1]
+                        percent = int(float(percent_str))
+                        if percent != last_percent and progress_callback:
+                            progress_callback(percent, f"Downloading... {percent}%")
+                            last_percent = percent
+                            
+                            # Log progress periodically (every 10% or every 2 minutes for long downloads)
+                            current_time = time.time()
+                            if percent % 10 == 0 or (current_time - last_log_time) > 120:
+                                logger.info(f"📥 Download progress: {percent}% - {line}")
+                                last_log_time = current_time
                 except (ValueError, TypeError, IndexError):
                     pass
         

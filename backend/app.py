@@ -620,7 +620,7 @@ def list_jobs(page: int = 1, limit: int = 20):
         # Get jobs and total count
         jobs = db.get_all_jobs(limit=limit, offset=offset)
         total = db.get_total_jobs_count()
-        total_pages = (total + limit - 1) // limit  # Ceiling division
+        total_pages = max(1, (total + limit - 1) // limit)  # Ceiling division, min 1
         
         return {
             "jobs": jobs,

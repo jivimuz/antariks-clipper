@@ -39,7 +39,7 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs(pagination.page);
-  }, []);
+  }, [pagination.page]);  // Refetch when page changes
 
   const fetchJobs = async (page: number = 1) => {
     setLoading(true);
@@ -287,7 +287,8 @@ export default function JobsPage() {
                     </button>
                     
                     <div className="flex items-center gap-1">
-                      {[...Array(pagination.total_pages)].map((_, i) => {
+                      {/* Smart pagination: show first, last, current, and adjacent pages only */}
+                      {[...Array(Math.min(pagination.total_pages, 100))].map((_, i) => {
                         const page = i + 1;
                         // Show first, last, current, and adjacent pages
                         if (
