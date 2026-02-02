@@ -237,7 +237,10 @@ def _attempt_download(
             'yt-dlp',
             '--no-warnings',
             '--no-check-certificate',
-            # Format: allow any best available, merge to mp4
+            # Format selection chain (tries each option in order until one works):
+            # 1. bestvideo[ext=mp4]+bestaudio[ext=m4a] - Best quality MP4/M4A (preferred)
+            # 2. bestvideo+bestaudio - Best quality any format, will merge
+            # 3. best - Single file with video and audio (fallback for no separate streams)
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
             '--merge-output-format', 'mp4',
             '--format-sort', 'res,ext:mp4:m4a',

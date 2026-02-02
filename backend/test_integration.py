@@ -67,7 +67,7 @@ def test_video_info():
     logger.info("TEST 3: Video Info Retrieval")
     logger.info("="*60)
     
-    # Use a known, stable YouTube video (never gonna give you up by Rick Astley)
+    # Use a known, stable YouTube video (Never Gonna Give You Up by Rick Astley)
     test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     
     logger.info(f"Testing with: {test_url}")
