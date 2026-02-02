@@ -21,12 +21,25 @@ export default function LicensePage() {
 
   const checkLicenseStatus = async () => {
     try {
-      const res = await fetch(getApiEndpoint("/api/license/status"));
+      // Use the unified validate endpoint with no body to check existing license
+      const res = await fetch(getApiEndpoint("/api/license/validate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
       const data = await res.json();
-      setLicenseStatus(data);
       
-      // If already activated and valid, redirect to home
-      if (data.activated && data.valid) {
+      // Save status for display
+      if (!data.valid && data.error) {
+        setLicenseStatus({
+          activated: true,
+          valid: false,
+          error: data.error
+        });
+      }
+      
+      // If already valid, redirect to home
+      if (data.valid) {
         toast.success("License already activated!");
         router.push("/");
       }
@@ -50,19 +63,16 @@ export default function LicensePage() {
     setError("");
     
     try {
-      const res = await fetch(getApiEndpoint("/api/license/activate"), {
+      // Use the unified validate endpoint with license_key to activate
+      const res = await fetch(getApiEndpoint("/api/license/validate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ license_key: licenseKey })
       });
       
-      const data: LicenseActivationResponse = await res.json();
+      const data = await res.json();
       
-      if (!res.ok) {
-        throw new Error(data.detail || data.error || "Invalid license key");
-      }
-      
-      if (data.success) {
+      if (data.valid) {
         toast.success(`License activated for ${data.owner}!`);
         // Redirect to home after successful activation
         setTimeout(() => {

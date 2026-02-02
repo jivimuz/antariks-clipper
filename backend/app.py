@@ -24,7 +24,7 @@ from config import RAW_DIR
 from services.cloud import upload_file_to_s3
 from services.jobs import submit_job, submit_render
 from services.preview import generate_preview_stream, get_preview_frame
-from services.license import activate_license, get_license_status, check_license_valid
+from services.license import validate_license, get_license_status, check_license_valid
 
 # Setup logging
 logging.basicConfig(
@@ -61,41 +61,50 @@ def health_check():
 
 # ==================== LICENSE ENDPOINTS ====================
 
-class LicenseActivateRequest(BaseModel):
-    license_key: str
+class LicenseValidateRequest(BaseModel):
+    license_key: Optional[str] = None
 
-@app.post("/api/license/activate")
-def license_activate(payload: LicenseActivateRequest):
+@app.post("/api/license/validate")
+def license_validate(payload: LicenseValidateRequest = None):
     """
-    Activate a license key.
-    Validates with server and saves if valid.
+    Validate license - single endpoint for all license operations.
+    
+    Request body (optional):
+    - license_key: New license key for activation (if provided, activates new license)
+    - If no license_key provided, checks existing license from storage
+    
+    Always sends to external server:
+    - license_key: from request or from storage
+    - product_code: from engine (obfuscated)
+    - account: MAC address
+    
+    Response:
+    - valid: true/false
+    - owner: owner name (if valid)
+    - expires: expiration date YYYY-MM-DD (if valid)
+    - error: error message (if not valid)
     """
     try:
-        result = activate_license(payload.license_key)
-        if result.get("success"):
-            logger.info(f"License activated for {result.get('owner')}")
+        # Extract license_key from payload if provided
+        license_key = None
+        if payload and payload.license_key:
+            license_key = payload.license_key
+        
+        result = validate_license(license_key)
+        
+        if not result.get("valid"):
+            # Return error but with 200 status to match spec
             return result
-        else:
-            raise HTTPException(status_code=400, detail=result.get("error", "Invalid license key"))
-    except HTTPException:
-        raise
+        
+        logger.info(f"License valid for {result.get('owner')}")
+        return result
+        
     except Exception as e:
-        logger.error(f"License activation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/license/status")
-def license_status():
-    """
-    Get current license status.
-    Returns activation status and validity.
-    """
-    try:
-        status = get_license_status()
-        return status
-    except Exception as e:
-        logger.error(f"License status check error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"License validation error: {e}")
+        return {
+            "valid": False,
+            "error": f"License validation failed: {str(e)}"
+        }
 
 
 # License middleware - checks license on protected endpoints
@@ -111,8 +120,7 @@ async def license_middleware(request: Request, call_next):
     # Skip license check for these paths
     excluded_paths = [
         "/health",
-        "/api/license/activate",
-        "/api/license/status",
+        "/api/license/validate",
         "/docs",
         "/redoc",
         "/openapi.json"
@@ -454,9 +462,6 @@ class UserRegister(BaseModel):
     email: str
     password: str
 
-class LicenseValidateRequest(BaseModel):
-    key: str
-
 @app.post("/api/register")
 def register_user(payload: UserRegister):
     """Register a new user (SaaS)"""
@@ -464,21 +469,6 @@ def register_user(payload: UserRegister):
         raise HTTPException(status_code=400, detail="Email already registered")
     user = db.create_user(payload.email, payload.password)
     return {"user_id": user["id"], "email": user["email"]}
-
-@app.post("/api/license/validate")
-def validate_license(payload: LicenseValidateRequest):
-    """Validate a license key (SaaS)"""
-    lic = db.get_license_by_key(payload.key)
-    if not lic or not lic.get("is_active"):
-        raise HTTPException(status_code=401, detail="Invalid or inactive license key")
-    # Optionally check expiry and usage limit
-    import datetime
-    if lic.get("expires_at"):
-        if datetime.datetime.fromisoformat(lic["expires_at"]) < datetime.datetime.utcnow():
-            raise HTTPException(status_code=403, detail="License expired")
-    if lic.get("usage_limit") is not None and lic["usage_count"] >= lic["usage_limit"]:
-        raise HTTPException(status_code=403, detail="License usage limit reached")
-    return {"key": lic["key"], "plan": lic["plan"], "user_id": lic["user_id"]}
 
 
 # Webhook registration endpoints
