@@ -29,19 +29,20 @@ export default function LicensePage() {
       });
       const data = await res.json();
       
-      // Save status for display
-      if (!data.valid && data.error) {
+      // Save status for display (both valid and invalid)
+      if (data.valid) {
+        setLicenseStatus({
+          activated: true,
+          valid: true,
+          owner: data.owner,
+          expires: data.expires
+        });
+      } else if (data.error) {
         setLicenseStatus({
           activated: true,
           valid: false,
           error: data.error
         });
-      }
-      
-      // If already valid, redirect to home
-      if (data.valid) {
-        toast.success("License already activated!");
-        router.push("/");
       }
     } catch (e) {
       console.error("Failed to check license status:", e);
@@ -114,11 +115,42 @@ export default function LicensePage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 rounded-full mb-4 border border-emerald-500/50">
             <Shield size={32} className="text-emerald-400" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">License Activation</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">License Management</h1>
           <p className="text-slate-400">
-            Enter your license key to activate Antariks Clipper
+            {licenseStatus?.valid ? "Manage your Antariks Clipper license" : "Enter your license key to activate Antariks Clipper"}
           </p>
         </div>
+
+        {/* Active License Display */}
+        {licenseStatus && licenseStatus.activated && licenseStatus.valid && (
+          <div className="mb-6 p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <CheckCircle2 size={24} className="text-emerald-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-emerald-400 font-bold text-lg">License Active</p>
+                <p className="text-emerald-400/80 text-sm mt-1">
+                  Your license is valid and active
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 pl-9">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-sm">Owner</span>
+                <span className="text-white font-medium">{licenseStatus.owner}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-sm">Expires</span>
+                <span className="text-white font-medium">
+                  {new Date(licenseStatus.expires || "").toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric"
+                  })}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* License Status Display (if checking and invalid) */}
         {licenseStatus && licenseStatus.activated && !licenseStatus.valid && (
@@ -137,55 +169,73 @@ export default function LicensePage() {
 
         {/* Activation Form */}
         <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-8 ring-1 ring-white/5">
-          <form onSubmit={handleActivate} className="space-y-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-emerald-100/80 ml-1">
-                License Key
-              </label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors">
-                  <Key size={20} />
+          {/* Only show form if no valid license */}
+          {(!licenseStatus || !licenseStatus.valid) && (
+            <form onSubmit={handleActivate} className="space-y-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-emerald-100/80 ml-1">
+                  {licenseStatus?.valid ? "Update License Key" : "License Key"}
+                </label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-emerald-400 transition-colors">
+                    <Key size={20} />
+                  </div>
+                  <input
+                    type="text"
+                    value={licenseKey}
+                    onChange={(e) => setLicenseKey(e.target.value)}
+                    placeholder="XXXX-XXXX-XXXX-XXXX"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-950/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none"
+                    disabled={loading}
+                    required
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={licenseKey}
-                  onChange={(e) => setLicenseKey(e.target.value)}
-                  placeholder="XXXX-XXXX-XXXX-XXXX"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-950/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all outline-none"
-                  disabled={loading}
-                  required
-                />
               </div>
+
+              {error && (
+                <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 animate-in fade-in slide-in-from-top-2">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                  <span className="text-sm font-medium">{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl hover:from-emerald-500 hover:to-teal-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 blur-md rounded-xl" />
+                <span className="relative z-10 flex items-center gap-2">
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Activating...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={20} />
+                      {licenseStatus?.activated ? "Update License" : "Activate License"}
+                    </>
+                  )}
+                </span>
+              </button>
+            </form>
+          )}
+
+          {/* Show message if license is valid */}
+          {licenseStatus && licenseStatus.valid && (
+            <div className="text-center space-y-4">
+              <p className="text-slate-400">
+                Your license is active and valid. If you need to update your license, please contact support.
+              </p>
+              <button
+                onClick={() => router.push("/")}
+                className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                ← Return to Dashboard
+              </button>
             </div>
-
-            {error && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 animate-in fade-in slide-in-from-top-2">
-                <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                <span className="text-sm font-medium">{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl hover:from-emerald-500 hover:to-teal-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:-translate-y-0.5 active:translate-y-0 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 blur-md rounded-xl" />
-              <span className="relative z-10 flex items-center gap-2">
-                {loading ? (
-                  <>
-                    <Loader2 className="animate-spin" size={20} />
-                    Activating...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={20} />
-                    Activate License
-                  </>
-                )}
-              </span>
-            </button>
-          </form>
+          )}
 
           {/* Help Text */}
           <div className="mt-6 pt-6 border-t border-white/5">
