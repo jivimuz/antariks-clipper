@@ -26,6 +26,10 @@ Auto-generate viral highlight clips from YouTube videos or manual uploads. Outpu
   - **Smart Captions**: Context-aware captions with emojis based on content category
   - **Auto Hashtags**: Default tags (#fyp #viral #antariksclipper) plus content-specific tags
   - **One-Click Copy**: Easy copy-to-clipboard for captions and hashtags
+- 🔐 **License Management**: Smart license expiry handling
+  - **Expiry Warning**: Toast notification when license is expiring soon (< 3 days)
+  - **Auto-Logout**: Automatic logout when license expires with notification
+  - **Real-time Checking**: License validation on every page load
 - 🚀 **Simple Setup**: No Docker, Redis, or complex dependencies
 
 ## Quick Start
@@ -146,6 +150,27 @@ For manual control, use the "Batch Create Clips" section:
 1. Enter start/end times manually
 2. Add multiple rows for multiple clips
 3. Save all clips at once
+
+### License Management
+
+Antariks Clipper includes intelligent license management to ensure seamless user experience:
+
+#### Expiry Notifications
+- **Early Warning**: When your license is expiring soon (less than 3 days), you'll see a warning toast notification on every page load
+- **Clear Information**: The notification shows exactly how many days remain (e.g., "Lisensi Anda akan berakhir 2 hari lagi")
+- **Non-intrusive**: The notification doesn't block your workflow if the license is still valid
+
+#### Auto-Logout on Expiry
+- **Automatic**: When your license expires, the system automatically logs you out
+- **Clear Message**: A toast notification appears: "Lisensi Anda telah berakhir" (Your license has expired)
+- **Redirect to Login**: You're automatically redirected to the login page
+- **Data Protection**: This ensures expired users cannot access the system
+
+#### How It Works
+1. **On Page Load**: Every time you navigate or load a page, the system checks your license status
+2. **Backend Validation**: The license is validated against the external license server
+3. **Smart Detection**: The system calculates days remaining and determines if action is needed
+4. **Responsive**: All checks happen in the background without blocking the UI
 
 ## Technology Stack
 
