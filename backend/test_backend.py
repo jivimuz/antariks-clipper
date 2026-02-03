@@ -317,7 +317,7 @@ if __name__ == "__main__":
     success = test_cleanup_raw_file() and success
     success = test_retry_job() and success
     success = test_retry_render() and success
-    success = test_user_register_and_login() and success
+    # Note: Removed test_user_register_and_login as login/register functionality has been removed
     
     if success:
         print("\n" + "="*50)

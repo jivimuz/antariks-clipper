@@ -284,33 +284,42 @@ export default function JobsPage() {
                            </a>
                          ) : null}
                          
-                         {/* Delete Button */}
-                         <button
-                           onClick={(e) => {
-                             e.preventDefault();
-                             handleDeleteJob(job.id);
-                           }}
-                           disabled={deletingJobId === job.id}
-                           className={`relative p-2 rounded-lg transition-all group/delete ${
-                             deleteConfirmId === job.id
-                               ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 animate-pulse'
-                               : 'bg-slate-800/50 text-slate-400 hover:bg-red-500/10 hover:text-red-400 border border-slate-700/50 hover:border-red-500/20'
-                           }`}
-                           title={deleteConfirmId === job.id ? "Click again to confirm deletion" : "Delete job and all files"}
-                         >
-                           {deletingJobId === job.id ? (
-                             <Loader2 size={18} className="animate-spin" />
-                           ) : (
-                             <>
-                               <Trash2 size={18} />
-                               {deleteConfirmId === job.id && (
-                                 <span className="absolute -top-8 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
-                                   Confirm delete?
-                                 </span>
-                               )}
-                             </>
-                           )}
-                         </button>
+                         {/* Delete Button - Only show for ready jobs */}
+                         {job.status === 'ready' ? (
+                           <button
+                             onClick={(e) => {
+                               e.preventDefault();
+                               handleDeleteJob(job.id);
+                             }}
+                             disabled={deletingJobId === job.id}
+                             className={`relative p-2 rounded-lg transition-all group/delete ${
+                               deleteConfirmId === job.id
+                                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 animate-pulse'
+                                 : 'bg-slate-800/50 text-slate-400 hover:bg-red-500/10 hover:text-red-400 border border-slate-700/50 hover:border-red-500/20'
+                             }`}
+                             title={deleteConfirmId === job.id ? "Click again to confirm deletion" : "Delete job and all files"}
+                           >
+                             {deletingJobId === job.id ? (
+                               <Loader2 size={18} className="animate-spin" />
+                             ) : (
+                               <>
+                                 <Trash2 size={18} />
+                                 {deleteConfirmId === job.id && (
+                                   <span className="absolute -top-8 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                                     Confirm delete?
+                                   </span>
+                                 )}
+                               </>
+                             )}
+                           </button>
+                         ) : (
+                           <div 
+                             className="relative p-2 rounded-lg bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed opacity-50"
+                             title="Cannot delete job while processing. Wait for completion."
+                           >
+                             <Trash2 size={18} />
+                           </div>
+                         )}
                       </div>
 
                     </div>

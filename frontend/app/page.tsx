@@ -2,21 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield, CreditCard, User, LogOut } from 'lucide-react';
+import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield, CreditCard } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
 import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 import { LicenseStatus } from '@/types/license';
-
-function useIsLoggedIn() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      setIsLoggedIn(!!token);
-    }
-  }, []);
-  return isLoggedIn;
-}
 
 function useLicenseStatus() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
@@ -53,9 +42,7 @@ function useLicenseStatus() {
 }
 
 export default function Home() {
-  const isLoggedIn = useIsLoggedIn();
   const licenseStatus = useLicenseStatus();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [sourceType, setSourceType] = useState<'youtube' | 'upload'>('youtube');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -111,8 +98,8 @@ export default function Home() {
       // --- SaaS: Require license key ---
       const licenseKey = typeof window !== 'undefined' ? licenseStatus?.licenseKey : null;
       if (!licenseKey) {
-        setError('License key required. Please enter your license in the Account page.');
-        toast.error('License key required. Please enter your license in the Account page.');
+        setError('License key required. Please enter your license in the License page.');
+        toast.error('License key required. Please activate your license first.');
         setLoading(false);
         return;
       }
@@ -146,15 +133,6 @@ export default function Home() {
     setError('');
   };
 
-  function handleLogout() {
-    localStorage.removeItem('token');
-    window.location.reload();
-  }
-
-  function handleLogin() {
-    window.location.href = "/login";
-  }
-
   return (
     <>
 
@@ -178,53 +156,13 @@ export default function Home() {
 
         {/* User Menu (Top Right) */}
         <div className="pointer-events-auto relative">
-          {isLoggedIn ? (
-            <div className="flex items-center gap-3">
-               <a
-                href="/license"
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/50 rounded-full text-xs font-medium text-slate-300 transition-all hover:text-white"
-              >
-                <CreditCard size={14} />
-                License
-              </a>
-              
-              <div className="relative">
-                <button
-                  className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-900/20 hover:ring-4 hover:ring-emerald-500/20 transition-all"
-                  onClick={() => setMenuOpen((v) => !v)}
-                >
-                  <User size={18} />
-                </button>
-                
-                {/* Dropdown */}
-                {menuOpen && (
-                  <div className="absolute right-0 mt-3 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 animate-in fade-in slide-in-from-top-2">
-                    <div className="px-4 py-3 border-b border-slate-800 mb-1">
-                      <p className="text-xs text-slate-500 font-medium uppercase">Account</p>
-                    </div>
-                    <a href="/license" className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition-colors sm:hidden">
-                      <CreditCard size={16} />
-                      License Settings
-                    </a>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left"
-                    >
-                      <LogOut size={16} />
-                      Log Out
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={handleLogin}
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-full text-sm font-semibold text-white transition-all hover:shadow-lg hover:border-slate-600"
-            >
-              Sign In
-            </button>
-          )}
+          <a
+            href="/license"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/50 rounded-full text-xs font-medium text-slate-300 transition-all hover:text-white"
+          >
+            <CreditCard size={14} />
+            License Settings
+          </a>
         </div>
       </nav>
 

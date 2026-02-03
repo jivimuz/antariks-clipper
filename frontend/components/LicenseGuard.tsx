@@ -25,15 +25,14 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
       if (!data.valid) {
         // Check if license is expired
         if (data.error?.toLowerCase().includes("expired")) {
-          // Auto-logout when license is expired
-          localStorage.removeItem("token");
+          // Show expiry notification
           toast.error("Lisensi Anda telah berakhir.", {
             duration: 5000,
             position: "top-center"
           });
           
-          // Redirect to login page
-          router.push("/login");
+          // Redirect to license page
+          router.push("/license");
           return;
         }
         
@@ -72,8 +71,8 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
   }, [router]);
 
   useEffect(() => {
-    // Skip check for license page and login page
-    if (pathname === "/license" || pathname === "/login") {
+    // Skip check for license page
+    if (pathname === "/license") {
       setChecking(false);
       setLicenseValid(true);
       return;
@@ -93,7 +92,7 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!licenseValid && pathname !== "/license" && pathname !== "/login") {
+  if (!licenseValid && pathname !== "/license") {
     return null; // Will redirect
   }
 
