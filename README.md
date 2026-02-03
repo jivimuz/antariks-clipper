@@ -153,18 +153,18 @@ For manual control, use the "Batch Create Clips" section:
 
 ### License Management
 
-Antariks Clipper includes intelligent license management to ensure seamless user experience:
+Antariks Clipper uses a license-based authentication system to ensure authorized access:
 
 #### Expiry Notifications
 - **Early Warning**: When your license is expiring soon (less than 3 days), you'll see a warning toast notification on every page load
 - **Clear Information**: The notification shows exactly how many days remain (e.g., "Lisensi Anda akan berakhir 2 hari lagi")
 - **Non-intrusive**: The notification doesn't block your workflow if the license is still valid
 
-#### Auto-Logout on Expiry
-- **Automatic**: When your license expires, the system automatically logs you out
+#### License Expiry Handling
+- **Automatic**: When your license expires, the system shows an expiry notification
 - **Clear Message**: A toast notification appears: "Lisensi Anda telah berakhir" (Your license has expired)
-- **Redirect to Login**: You're automatically redirected to the login page
-- **Data Protection**: This ensures expired users cannot access the system
+- **Redirect to License Page**: You're automatically redirected to the license activation page
+- **Access Control**: The system requires a valid license to access all features
 
 #### How It Works
 1. **On Page Load**: Every time you navigate or load a page, the system checks your license status
