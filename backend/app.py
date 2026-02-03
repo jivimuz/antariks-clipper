@@ -3,14 +3,10 @@ import logging
 import os
 import uuid
 import json
-import secrets
-import smtplib
-from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Optional, List, Dict
 
 import db
-from db import log_action
 
 from fastapi import (
     FastAPI, HTTPException, UploadFile, File, Form, Response,
@@ -163,155 +159,7 @@ async def license_middleware(request: Request, call_next):
     return response
 
 
-# Password reset request and reset endpoints
-import secrets
-password_reset_tokens: Dict[str, str] = {}
-
-class PasswordResetRequest(BaseModel):
-    email: str
-
-class PasswordResetConfirm(BaseModel):
-    token: str
-    new_password: str
-
-# Admin: List all users endpoint
-@app.get("/api/admin/users")
-def admin_get_users():
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, email, created_at, is_admin FROM users")
-    rows = cursor.fetchall()
-    conn.close()
-    users = []
-    for row in rows:
-        users.append({
-            "id": row[0],
-            "email": row[1],
-            "created_at": row[2] if len(row) > 2 else None,
-            "is_admin": bool(row[3]) if len(row) > 3 else False
-        })
-    return {"users": users}
-
-# --- Email Utility ---
-def send_email(to_email, subject, body):
-    # DEMO: Configure your SMTP server here
-    SMTP_SERVER = "smtp.example.com"
-    SMTP_PORT = 587
-    SMTP_USER = "your@email.com"
-    SMTP_PASS = "yourpassword"
-    from_email = SMTP_USER
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = to_email
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(from_email, [to_email], msg.as_string())
-    except Exception as e:
-        print(f"Email send failed: {e}")
-
-@app.post("/api/password-reset/request")
-def password_reset_request(payload: PasswordResetRequest):
-    user = db.get_user_by_email(payload.email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    token = secrets.token_urlsafe(24)
-    password_reset_tokens[token] = user["email"]
-    # Send token via email
-    send_email(
-        to_email=payload.email,
-        subject="Your Password Reset Token",
-        body=f"Your password reset token is: {token}\nIf you did not request this, please ignore."
-    )
-    return {"message": "Password reset token sent to your email."}
-
-@app.post("/api/password-reset/confirm")
-def password_reset_confirm(payload: PasswordResetConfirm):
-    email = password_reset_tokens.get(payload.token)
-    if not email:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-    user = db.get_user_by_email(email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    from db import hash_password
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET password_hash = ? WHERE email = ?", (hash_password(payload.new_password), email))
-    conn.commit()
-    conn.close()
-    del password_reset_tokens[payload.token]
-    return {"message": "Password reset successful"}
-# User: View licenses and usage
-@app.get("/api/user/licenses")
-def user_licenses(email: str):
-    """Get all licenses and usage for a user (SaaS dashboard)"""
-    user = db.get_user_by_email(email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM licenses WHERE user_id = ?", (user["id"],))
-    rows = cursor.fetchall()
-    conn.close()
-    return [{k: row[k] for k in row.keys()} for row in rows]
-# Admin: Deactivate/Activate License endpoint
-class LicenseStatusRequest(BaseModel):
-    key: str
-    is_active: bool
-
-@app.post("/api/admin/set-license-status")
-def admin_set_license_status(payload: LicenseStatusRequest):
-    """Admin: Deactivate or activate a license key (SaaS)"""
-    lic = db.get_license_by_key(payload.key)
-    if not lic:
-        raise HTTPException(status_code=404, detail="License not found")
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE licenses SET is_active = ? WHERE key = ?", (1 if payload.is_active else 0, payload.key))
-    conn.commit()
-    conn.close()
-    return {"key": payload.key, "is_active": payload.is_active}
-# Admin: Create License endpoint
-class LicenseCreateRequest(BaseModel):
-    user_email: str
-    plan: str
-    expires_at: Optional[str] = None
-    usage_limit: Optional[int] = None
-
-@app.post("/api/admin/create-license")
-def admin_create_license(payload: LicenseCreateRequest):
-    """Admin: Create a license for a user (SaaS)"""
-    user = db.get_user_by_email(payload.user_email)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    lic = db.create_license(user_id=user["id"], plan=payload.plan, expires_at=payload.expires_at, usage_limit=payload.usage_limit)
-    log_action(user["id"], "create_license", f"License created: {lic['key']}")
-    return {"key": lic["key"], "plan": lic["plan"], "expires_at": lic["expires_at"], "usage_limit": lic["usage_limit"]}
-# Login model
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
-import secrets
-
-@app.post("/api/login")
-def login_user(payload: UserLogin):
-    """User login (SaaS)"""
-    user = db.get_user_by_email(payload.email)
-    if not user or not user.get("is_active"):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    from db import hash_password
-    if user["password_hash"] != hash_password(payload.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    # Generate a simple session token (for demo; use JWT in production)
-    token = secrets.token_hex(24)
-    log_action(user["id"], "login", f"User {user['email']} logged in")
-    # In production, store token in DB or use JWT
-    return {"token": token, "user_id": user["id"], "email": user["email"]}
-from fastapi import Body
-# === AUTOMATION ENDPOINT ===
+# Models
 class AutomateRequest(BaseModel):
     source_type: str
     youtube_url: Optional[str] = None
@@ -429,12 +277,6 @@ def get_analytics():
         logger.error(f"Analytics error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-@app.get("/api/admin/audit-logs")
-def admin_audit_logs():
-    return {"logs": get_audit_logs()}
-
 # Models
 class YouTubeJobCreate(BaseModel):
     source_type: str = "youtube"
@@ -459,20 +301,6 @@ class RenderCreate(BaseModel):
     smart_crop: bool = False
     captions: bool = False
     watermark_text: str = ""
-
-# SaaS Licensing Models
-class UserRegister(BaseModel):
-    email: str
-    password: str
-
-@app.post("/api/register")
-def register_user(payload: UserRegister):
-    """Register a new user (SaaS)"""
-    if db.get_user_by_email(payload.email):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = db.create_user(payload.email, payload.password)
-    return {"user_id": user["id"], "email": user["email"]}
-
 
 # Webhook registration endpoints
 @app.post("/api/jobs/{job_id}/webhook")
@@ -715,11 +543,22 @@ def delete_job(job_id: str):
     - Thumbnails
     - Rendered videos
     - Any temporary or partial download files
+    
+    Note: Only jobs with status 'ready' can be deleted to prevent deletion
+    of jobs that are still being processed or downloaded.
     """
     try:
         job = db.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Check if job status allows deletion
+        job_status = job.get('status', '')
+        if job_status != 'ready':
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete job with status '{job_status}'. Only jobs with status 'ready' can be deleted. Please wait for the job to complete or fail completely before deleting."
+            )
         
         logger.info(f"=== Starting deletion for job {job_id} ===")
         
