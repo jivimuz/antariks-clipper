@@ -36,7 +36,9 @@ function useLicenseStatus() {
             valid: true,
             owner: data.owner,
             expires: data.expires,
-            licenseKey: data.licenseKey
+            licenseKey: data.licenseKey,
+            daysRemaining: data.daysRemaining,
+            expiringSoon: data.expiringSoon
           });
         } else {
           setLicenseStatus({

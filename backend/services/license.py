@@ -77,6 +77,22 @@ def is_expired(expires_str: str) -> bool:
     except (ValueError, TypeError):
         return True
 
+def get_days_until_expiry(expires_str: str) -> int | None:
+    """Get number of days until license expires (negative if already expired)"""
+    try:
+        expires_date = datetime.strptime(expires_str, "%Y-%m-%d").date()
+        delta = expires_date - date.today()
+        return delta.days
+    except (ValueError, TypeError):
+        return None
+
+def is_expiring_soon(expires_str: str, days_threshold: int = 3) -> bool:
+    """Check if license is expiring soon (within threshold days)"""
+    days_remaining = get_days_until_expiry(expires_str)
+    if days_remaining is None:
+        return False
+    return 0 <= days_remaining < days_threshold
+
 async def validate_license(license_key: str | None = None) -> dict:
     """
     Validate license against external server
@@ -124,11 +140,17 @@ async def validate_license(license_key: str | None = None) -> dict:
                 if not save_license(license_key, data.get("owner", ""), expires):
                     logger.warning("License validated but failed to save to disk")
                 
+                # Calculate days until expiry
+                days_remaining = get_days_until_expiry(expires)
+                expiring_soon = is_expiring_soon(expires)
+                
                 return {
                     "licenseKey": license_key,
                     "valid": True,
                     "owner": data.get("owner", ""),
-                    "expires": expires
+                    "expires": expires,
+                    "daysRemaining": days_remaining,
+                    "expiringSoon": expiring_soon
                 }
             else:
                 return {"valid": False, "error": "Invalid license key"}
@@ -166,12 +188,18 @@ def get_license_status() -> dict:
             "error": "License expired"
         }
     
+    # Calculate days remaining and expiring soon status
+    days_remaining = get_days_until_expiry(expires_str)
+    expiring_soon = is_expiring_soon(expires_str)
+    
     # Return cached status
     return {
         "activated": True,
         "valid": True,
         "owner": saved.get("owner", "Unknown"),
-        "expires": saved.get("expires", "Unknown")
+        "expires": saved.get("expires", "Unknown"),
+        "daysRemaining": days_remaining,
+        "expiringSoon": expiring_soon
     }
 
 

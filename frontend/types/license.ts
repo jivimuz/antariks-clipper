@@ -10,6 +10,8 @@ export interface LicenseStatus {
   expires?: string;
   error?: string;
   needs_validation?: boolean;
+  daysRemaining?: number | null;
+  expiringSoon?: boolean;
 }
 
 export interface LicenseActivationResponse {
@@ -18,4 +20,6 @@ export interface LicenseActivationResponse {
   expires?: string;
   error?: string;
   detail?: string;  // For error responses from API
+  daysRemaining?: number | null;
+  expiringSoon?: boolean;
 }

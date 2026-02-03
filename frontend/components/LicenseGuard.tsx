@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { getApiEndpoint } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { LicenseStatus } from "@/types/license";
+import toast from "react-hot-toast";
 
 export default function LicenseGuard({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
@@ -19,12 +20,45 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({})
       });
-      const data = await res.json();
+      const data: LicenseStatus = await res.json();
 
       if (!data.valid) {
+        // Check if license is expired
+        if (data.error?.toLowerCase().includes("expired")) {
+          // Auto-logout when license is expired
+          localStorage.removeItem("token");
+          toast.error("Lisensi Anda telah berakhir.", {
+            duration: 5000,
+            position: "top-center"
+          });
+          
+          // Redirect to login page
+          router.push("/login");
+          return;
+        }
+        
         // Redirect to license page if not valid
         router.push("/license");
         return;
+      }
+
+      // License is valid - check if expiring soon
+      if (data.expiringSoon && data.daysRemaining !== null && data.daysRemaining !== undefined) {
+        const daysText = data.daysRemaining === 0 
+          ? "hari ini" 
+          : data.daysRemaining === 1 
+            ? "besok" 
+            : `${data.daysRemaining} hari lagi`;
+        
+        toast(`⚠️ Lisensi Anda akan berakhir ${daysText}. Segera perpanjang lisensi Anda.`, {
+          duration: 8000,
+          icon: "⚠️",
+          style: {
+            background: "#713f12",
+            color: "#fef3c7",
+            border: "1px solid #f59e0b",
+          }
+        });
       }
 
       setLicenseValid(true);
@@ -38,8 +72,8 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
   }, [router]);
 
   useEffect(() => {
-    // Skip check for license page itself
-    if (pathname === "/license") {
+    // Skip check for license page and login page
+    if (pathname === "/license" || pathname === "/login") {
       setChecking(false);
       setLicenseValid(true);
       return;
@@ -59,7 +93,7 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!licenseValid && pathname !== "/license") {
+  if (!licenseValid && pathname !== "/license" && pathname !== "/login") {
     return null; // Will redirect
   }
 
