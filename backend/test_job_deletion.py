@@ -64,6 +64,13 @@ def test_job_deletion_restrictions():
         assert job is None, "Job should have been deleted from database"
         print("✓ Verified job was deleted from database")
         
+        # Note: File cleanup verification would require creating actual files
+        # In a real test environment, you would:
+        # 1. Create test files (raw video, thumbnails, etc.)
+        # 2. Call the delete endpoint
+        # 3. Verify all files are removed from filesystem
+        print("Note: File cleanup is handled by the endpoint but not tested here")
+        
         # Clean up test jobs (except the ready one which was already deleted)
         for job_id in [job_id_processing, job_id_queued, job_id_failed]:
             try:

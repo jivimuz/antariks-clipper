@@ -557,7 +557,7 @@ def delete_job(job_id: str):
         if job_status != 'ready':
             raise HTTPException(
                 status_code=400, 
-                detail=f"Cannot delete job with status '{job_status}'. Only jobs with status 'ready' can be deleted. Please wait for the job to complete or fail completely before deleting."
+                detail=f"Cannot delete job with status '{job_status}'. Only completed jobs (status 'ready') can be deleted. Jobs that are still processing, queued, or failed cannot be deleted to prevent data inconsistency."
             )
         
         logger.info(f"=== Starting deletion for job {job_id} ===")
