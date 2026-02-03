@@ -50,7 +50,7 @@ export default function LicenseGuard({ children }: { children: React.ReactNode }
             ? "besok" 
             : `${data.daysRemaining} hari lagi`;
         
-        toast(`⚠️ Lisensi Anda akan berakhir ${daysText}. Segera perpanjang lisensi Anda.`, {
+        toast(`Lisensi Anda akan berakhir ${daysText}. Segera perpanjang lisensi Anda.`, {
           duration: 8000,
           icon: "⚠️",
           style: {

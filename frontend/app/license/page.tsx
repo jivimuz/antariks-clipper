@@ -33,7 +33,7 @@ export default function LicensePage() {
       // Save status for display (both valid and invalid)
       if (data.valid) {
         setLicenseStatus({
-          licenseKey: data.license_key || "",
+          licenseKey: data.licenseKey || "",
           activated: true,
           valid: data.valid,
           owner: data.owner,
