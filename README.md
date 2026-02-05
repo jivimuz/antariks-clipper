@@ -2,6 +2,25 @@
 
 Auto-generate viral highlight clips from YouTube videos or manual uploads. Output vertical 9:16 format ready for Reels/TikTok.
 
+## 🎯 Distribution Options
+
+Antariks Clipper is available in two formats:
+
+1. **Desktop Application** (Recommended) - Standalone Electron app with integrated backend
+   - 🖥️ Native desktop experience
+   - 🚀 One-click installation
+   - ⚡ Auto-start/stop backend
+   - 📦 No manual setup required
+   - 🔒 All-in-one package
+   - [Download Releases](https://github.com/jivimuz/antariks-clipper/releases)
+   - [Build Guide](DESKTOP_BUILD.md)
+
+2. **Web Application** - Traditional client-server setup
+   - 🌐 Runs in browser
+   - 🛠️ Requires manual backend/frontend setup
+   - 💻 Development mode
+   - See setup instructions below
+
 ## Features
 
 ### Core Features
@@ -84,6 +103,55 @@ npm run dev
 ```
 
 Frontend will be available at http://localhost:3000
+
+## Desktop Application
+
+### Quick Start (Recommended)
+
+Download the latest release for your platform:
+- **Windows**: `AntariksClipper-Setup-[version].exe`
+- **macOS**: `Antariks Clipper-[version].dmg`
+- **Linux**: `Antariks Clipper-[version].AppImage`
+
+Double-click to install and run. The backend starts automatically!
+
+### Development Mode
+
+To run the desktop app in development mode:
+
+```bash
+cd frontend
+
+# Install dependencies (includes Electron)
+npm install
+
+# Run Electron with auto-starting backend
+npm run electron-dev
+```
+
+This will:
+1. Start Next.js dev server on port 3000
+2. Launch Electron window
+3. Automatically start Python backend on port 8000
+4. Enable hot-reload for frontend changes
+
+### Building Desktop App
+
+```bash
+cd frontend
+
+# Build for current platform
+npm run dist
+
+# Or build for specific platform
+npm run dist:win    # Windows
+npm run dist:mac    # macOS
+npm run dist:linux  # Linux
+```
+
+See [DESKTOP_BUILD.md](DESKTOP_BUILD.md) for comprehensive build instructions.
+
+## Web Application (Development)
 
 ### Usage
 
