@@ -26,6 +26,15 @@ frontend/.env.test.local
 frontend/.env.production.local
 backend/.env
 
+# Electron build artifacts
+frontend/out/
+frontend/dist/
+frontend/build/*.ico
+frontend/build/*.icns
+frontend/build/*.png
+!frontend/build/.gitkeep
+!frontend/build/README.md
+
 # OS
 .DS_Store
 Thumbs.db
