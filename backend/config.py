@@ -16,6 +16,7 @@ DB_PATH = DATA_DIR / "clipper.db"
 
 # Processing
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "2"))
+MAX_CONCURRENT_RENDERS = int(os.getenv("MAX_CONCURRENT_RENDERS", "2"))
 DEFAULT_CLIP_COUNT = int(os.getenv("DEFAULT_CLIP_COUNT", "12"))
 MIN_CLIP_DURATION = float(os.getenv("MIN_CLIP_DURATION", "15"))
 MAX_CLIP_DURATION = float(os.getenv("MAX_CLIP_DURATION", "60"))

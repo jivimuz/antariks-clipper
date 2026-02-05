@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "./toast-provider";
 import LicenseGuard from "@/components/LicenseGuard";
+import { DownloadProvider } from "@/contexts/DownloadContext";
+import { JobProcessProvider } from "@/contexts/JobProcessContext";
+import FloatingDownloadManager from "@/components/FloatingDownloadManager";
+import FloatingJobProcess from "@/components/FloatingJobProcess";
 
 export const metadata: Metadata = {
   title: "Antariks Clipper",
@@ -18,9 +22,15 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <ToastProvider>
-          <LicenseGuard>
-            {children}
-          </LicenseGuard>
+          <DownloadProvider>
+            <JobProcessProvider>
+              <LicenseGuard>
+                {children}
+              </LicenseGuard>
+              <FloatingJobProcess />
+              <FloatingDownloadManager />
+            </JobProcessProvider>
+          </DownloadProvider>
         </ToastProvider>
       </body>
     </html>

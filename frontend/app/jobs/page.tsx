@@ -1,17 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar, ChevronLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle2, AlertCircle, Loader2, Youtube, FileVideo, ChevronRight, Calendar, ChevronLeft, Trash2, X } from 'lucide-react';
 import toast from "react-hot-toast";
 import { getApiEndpoint } from '@/lib/api';
 import Breadcrumb from '@/components/Breadcrumb';
 import { SkeletonJobList } from '@/components/Skeleton';
+import { useJobTracking } from '@/hooks/useJobTracking';
 
 interface Job {
   id: string;
   source_type: string;
   source_url?: string;
-  status: 'ready' | 'processing' | 'failed';
+  status: 'ready' | 'processing' | 'failed' | 'cancelled' | 'queued';
   step: string;
   progress: number;
   error?: string;
@@ -26,6 +27,7 @@ interface PaginationData {
 }
 
 export default function JobsPage() {
+  const { trackJob } = useJobTracking();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState<PaginationData>({
@@ -37,10 +39,20 @@ export default function JobsPage() {
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteConfirmTimeout, setDeleteConfirmTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchJobs(pagination.page);
   }, [pagination.page]);  // Refetch when page changes
+
+  // Track processing jobs
+  useEffect(() => {
+    jobs.forEach(job => {
+      if (job.status === 'processing' || job.status === 'queued') {
+        trackJob(job.id, job.source_url);
+      }
+    });
+  }, [jobs, trackJob]);
 
   // Clear timeout when deleteConfirmId changes or component unmounts
   useEffect(() => {
@@ -133,6 +145,28 @@ export default function JobsPage() {
     }
   };
 
+  const handleCancelJob = async (jobId: string) => {
+    setCancellingJobId(jobId);
+    try {
+      const response = await fetch(getApiEndpoint(`/api/jobs/${jobId}/cancel`), {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to cancel job');
+      }
+
+      toast.success('Job cancelled');
+      await fetchJobs(pagination.page);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to cancel job';
+      toast.error(errorMessage);
+    } finally {
+      setCancellingJobId(null);
+    }
+  };
+
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.total_pages) {
       fetchJobs(newPage);
@@ -147,6 +181,8 @@ export default function JobsPage() {
         return 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]';
       case 'failed':
         return 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]';
+      case 'cancelled':
+        return 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]';
       default:
         return 'bg-slate-800 text-slate-400 border-slate-700';
     }
@@ -157,6 +193,7 @@ export default function JobsPage() {
       case 'ready': return <CheckCircle2 size={16} />;
       case 'processing': return <Loader2 size={16} className="animate-spin" />;
       case 'failed': return <AlertCircle size={16} />;
+      case 'cancelled': return <X size={16} />;
       default: return <Clock size={16} />;
     }
   };
@@ -257,7 +294,7 @@ export default function JobsPage() {
 
                       {/* Actions Section */}
                       <div className="w-full md:w-auto shrink-0 flex items-center gap-4">
-                         {job.status === 'processing' ? (
+                         {['processing', 'queued'].includes(job.status) ? (
                           <div className="flex-1 md:w-64 space-y-2">
                             <div className="flex justify-between text-xs font-medium uppercase tracking-wide">
                               <span className="text-emerald-400 animate-pulse">{job.step.replace('_', ' ')}</span>
@@ -284,8 +321,27 @@ export default function JobsPage() {
                            </a>
                          ) : null}
                          
-                         {/* Delete Button - Only show for ready jobs */}
-                         {job.status === 'ready' ? (
+                         {/* Cancel Button - Only for processing jobs */}
+                         {['processing', 'queued'].includes(job.status) && (
+                           <button
+                             onClick={(e) => {
+                               e.preventDefault();
+                               handleCancelJob(job.id);
+                             }}
+                             disabled={cancellingJobId === job.id}
+                             className="relative p-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all"
+                             title="Cancel job"
+                           >
+                             {cancellingJobId === job.id ? (
+                               <Loader2 size={18} className="animate-spin" />
+                             ) : (
+                               <X size={18} />
+                             )}
+                           </button>
+                         )}
+
+                         {/* Delete Button - show for ready/failed/cancelled jobs */}
+                         {['ready', 'failed', 'cancelled'].includes(job.status) ? (
                            <button
                              onClick={(e) => {
                                e.preventDefault();
@@ -315,7 +371,7 @@ export default function JobsPage() {
                          ) : (
                            <div 
                              className="relative p-2 rounded-lg bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed opacity-50"
-                             title="Cannot delete job while processing. Wait for completion."
+                             title="Cannot delete job while processing. Cancel first."
                            >
                              <Trash2 size={18} />
                            </div>

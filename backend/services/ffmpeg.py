@@ -244,7 +244,9 @@ def crop_and_scale_center(input_path: Path, output_path: Path, width: int, heigh
             '-c:v', 'libx264',
             '-preset', 'fast',
             '-crf', '23',
+            '-pix_fmt', 'yuv420p',
             '-c:a', 'copy',
+            '-movflags', '+faststart',
             '-y',
             str(output_path)
         ]
@@ -257,19 +259,56 @@ def crop_and_scale_center(input_path: Path, output_path: Path, width: int, heigh
         return False
 
 def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bool:
-    """Mux video and audio"""
+    """Mux video and audio with proper sync"""
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            'ffmpeg',
-            '-i', str(video_path),
-            '-i', str(audio_path),
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-shortest',
-            '-y',
-            str(output_path)
-        ]
+        video_info = get_video_info(video_path)
+        audio_info = get_audio_info(audio_path)
+
+        video_codec = video_info.get('codec_name', '') if video_info else ''
+        audio_codec = audio_info.get('codec_name', '') if audio_info else ''
+
+        # Re-encode if codecs are not browser/social compatible
+        reencode_video = video_codec != 'h264'
+        reencode_audio = audio_codec != 'aac'
+
+        if reencode_video or reencode_audio:
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-i', str(audio_path),
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '1:a:0',  # Map audio from second input
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-shortest',  # End at shortest stream
+                '-async', '1',  # Audio sync method
+                '-vsync', '2',  # Video sync method (CFR)
+                '-movflags', '+faststart',
+                '-y',
+                str(output_path)
+            ]
+        else:
+            cmd = [
+                'ffmpeg',
+                '-i', str(video_path),
+                '-i', str(audio_path),
+                '-c:v', 'copy',
+                '-c:a', 'copy',  # Copy audio codec to avoid re-encoding delays
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '1:a:0',  # Map audio from second input
+                '-shortest',  # End at shortest stream
+                '-async', '1',  # Audio sync method
+                '-vsync', '2',  # Video sync method (CFR)
+                '-movflags', '+faststart',
+                '-y',
+                str(output_path)
+            ]
         
         duration = get_video_duration(video_path) or 60
         timeout = max(int(duration * 2), 120)
@@ -281,7 +320,7 @@ def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bo
         return False
 
 def burn_subtitles(video_path: Path, srt_path: Path, output_path: Path) -> bool:
-    """Burn subtitles into video"""
+    """Burn subtitles into video with proper A/V sync"""
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         # Escape path for subtitles filter (Windows compatibility)
@@ -296,7 +335,11 @@ def burn_subtitles(video_path: Path, srt_path: Path, output_path: Path) -> bool:
             '-c:v', 'libx264',
             '-preset', 'fast',
             '-crf', '23',
+            '-pix_fmt', 'yuv420p',
             '-c:a', 'copy',
+            '-vsync', '2',  # Video sync method for proper frame timing
+            '-async', '1',  # Audio sync method
+            '-movflags', '+faststart',
             '-y',
             str(output_path)
         ]

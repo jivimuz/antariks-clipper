@@ -144,9 +144,9 @@ def render_clip(
                     logger.error("Failed to smart reframe video")
                     return False
                 
-                # Extract audio from original segment
+                # Extract audio from the same segment to keep A/V sync
                 audio_path = tmpdir_path / "audio.aac"
-                if not extract_audio(video_path, audio_path, start_sec, duration):
+                if not extract_audio(segment_path, audio_path, 0, duration):
                     logger.error("Failed to extract audio")
                     return False
                 
@@ -177,9 +177,9 @@ def render_clip(
                     logger.error("Failed to reframe video")
                     return False
                 
-                # Extract audio from original segment
+                # Extract audio from the same segment to keep A/V sync
                 audio_path = tmpdir_path / "audio.aac"
-                if not extract_audio(video_path, audio_path, start_sec, duration):
+                if not extract_audio(segment_path, audio_path, 0, duration):
                     logger.error("Failed to extract audio")
                     return False
                 

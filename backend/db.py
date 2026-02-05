@@ -397,18 +397,69 @@ def create_render(render_id: str, clip_id: str, options: Dict[str, Any]) -> Dict
     return get_render(render_id)
 
 def get_render(render_id: str) -> Optional[Dict[str, Any]]:
-    """Get render by ID"""
+    """Get render by ID with file validation"""
+    from pathlib import Path
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM renders WHERE id = ?", (render_id,))
     row = cursor.fetchone()
-    conn.close()
+    
     if row:
         result = dict(row)
         if result.get('options_json'):
             result['options'] = json.loads(result['options_json'])
+        
+        # Validate file exists if status is ready
+        if result.get('status') == 'ready' and result.get('output_path'):
+            output_path = Path(result['output_path'])
+            if not output_path.exists():
+                # File missing - update status to failed
+                cursor.execute(
+                    "UPDATE renders SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+                    ('failed', 'Render file was deleted or missing', datetime.utcnow().isoformat(), render_id)
+                )
+                conn.commit()
+                result['status'] = 'failed'
+                result['error'] = 'Render file was deleted or missing'
+        
+        conn.close()
         return result
+    
+    conn.close()
     return None
+
+
+def get_renders_by_clip(clip_id: str) -> List[Dict[str, Any]]:
+    """Get all renders for a clip"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM renders WHERE clip_id = ? ORDER BY created_at DESC", (clip_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        item = dict(row)
+        if item.get('options_json'):
+            item['options'] = json.loads(item['options_json'])
+        result.append(item)
+    return result
+
+
+def list_renders() -> List[Dict[str, Any]]:
+    """Get all renders from database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM renders ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        item = dict(row)
+        if item.get('options_json'):
+            item['options'] = json.loads(item['options_json'])
+        result.append(item)
+    return result
+
 
 def update_render(render_id: str, **kwargs):
     """Update render fields"""
@@ -421,6 +472,17 @@ def update_render(render_id: str, **kwargs):
     
     cursor.execute(f"UPDATE renders SET {fields} WHERE id = ?", values)
     conn.commit()
+    conn.close()
+
+def delete_render(render_id: str) -> bool:
+    """Delete render record from database"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM renders WHERE id = ?", (render_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
     conn.close()
 
 # Delete operations
@@ -451,7 +513,8 @@ def delete_job(job_id: str) -> bool:
         conn.close()
 
 def get_renders_by_job(job_id: str) -> List[Dict[str, Any]]:
-    """Get all renders for a job (via clips)"""
+    """Get all renders for a job (via clips) with file validation"""
+    from pathlib import Path
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -460,11 +523,27 @@ def get_renders_by_job(job_id: str) -> List[Dict[str, Any]]:
         WHERE c.job_id = ?
     """, (job_id,))
     rows = cursor.fetchall()
-    conn.close()
+    
     result = []
     for row in rows:
         item = dict(row)
         if item.get('options_json'):
             item['options'] = json.loads(item['options_json'])
+        
+        # Validate file exists if status is ready
+        if item.get('status') == 'ready' and item.get('output_path'):
+            output_path = Path(item['output_path'])
+            if not output_path.exists():
+                # File missing - update status to failed
+                cursor.execute(
+                    "UPDATE renders SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+                    ('failed', 'Render file was deleted or missing', datetime.utcnow().isoformat(), item['id'])
+                )
+                item['status'] = 'failed'
+                item['error'] = 'Render file was deleted or missing'
+        
         result.append(item)
+    
+    conn.commit()
+    conn.close()
     return result

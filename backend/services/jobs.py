@@ -15,6 +15,7 @@ from services.transcribe import transcribe_video, load_transcript
 from services.highlight import generate_highlights
 from services.thumbnails import generate_thumbnail
 from services.render import render_clip
+from services.ffmpeg import normalize_video
 from services.caption_generator import generate_caption, generate_hashtags
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,10 @@ def process_job(job_id: str):
     5. Job ready for PREVIEW (no rendering yet)
     """
     raw_path = None
+
+    def is_job_cancelled() -> bool:
+        current = db.get_job(job_id)
+        return bool(current and current.get("status") == "cancelled")
     
     try:
         logger.info("="*60)
@@ -90,6 +95,9 @@ def process_job(job_id: str):
         logger.info("STEP 1: ACQUIRE VIDEO")
         logger.info("-"*60)
         db.update_job(job_id, status='processing', step='acquire', progress=10)
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled during acquire: {job_id}")
+            return
         
         if job['source_type'] == 'youtube':
             raw_path = raw_path_youtube
@@ -146,29 +154,66 @@ def process_job(job_id: str):
             logger.info(f"✓ Using uploaded file: {raw_path} ({file_size / 1024 / 1024:.1f} MB)")
         
         db.update_job(job_id, raw_path=str(raw_path), progress=30)
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled after acquire: {job_id}")
+            return
         logger.info(f"✓ Step 1 complete - Video acquired")
+
+        # ===== Optional Step: Normalize for stable A/V sync =====
+        normalized_path = NORMALIZED_DIR / f"{job_id}.mp4"
+        if normalized_path.exists():
+            logger.info(f"✓ Normalized file already exists: {normalized_path}")
+            db.update_job(job_id, normalized_path=str(normalized_path))
+        else:
+            logger.info("Starting normalization for stable audio/video sync...")
+            db.update_job(job_id, step='normalize', progress=35)
+            if is_job_cancelled():
+                logger.info(f"⚠️ Job cancelled before normalization: {job_id}")
+                return
+            if normalize_video(raw_path, normalized_path):
+                db.update_job(job_id, normalized_path=str(normalized_path), progress=38)
+                logger.info(f"✓ Normalization successful: {normalized_path}")
+            else:
+                logger.warning("Normalization failed - continuing with raw video")
         
-        # ===== Step 2: Transcribe (directly from raw) =====
+        # Prefer normalized video for consistent timing
+        analysis_path = None
+        if job.get('normalized_path'):
+            normalized_path = Path(job['normalized_path'])
+            if normalized_path.exists():
+                analysis_path = normalized_path
+
+        if analysis_path is None:
+            analysis_path = raw_path
+
+        # ===== Step 2: Transcribe (use normalized if available) =====
         logger.info("-"*60)
         logger.info("STEP 2: TRANSCRIBE VIDEO")
         logger.info("-"*60)
         db.update_job(job_id, step='transcribe', progress=40)
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled before transcription: {job_id}")
+            return
         
         if transcript_path.exists():
             logger.info(f"✓ Transcript already exists: {transcript_path}")
             logger.info("Skipping transcription")
         else:
             logger.info(f"Starting transcription...")
-            logger.info(f"Input: {raw_path}")
+            logger.info(f"Input: {analysis_path}")
             logger.info(f"Output: {transcript_path}")
             
-            if not transcribe_video(raw_path, transcript_path):
-                error_msg = 'Transcription failed - video may not have audio or audio format is not supported'
+            if not transcribe_video(analysis_path, transcript_path):
+                error_msg = 'Transcription failed - check logs for audio stream/format issues'
                 logger.error(f"❌ {error_msg}")
                 db.update_job(job_id, status='failed', error=error_msg)
                 return
             
             logger.info(f"✓ Transcription successful")
+
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled after transcription: {job_id}")
+            return
         
         db.update_job(job_id, progress=60)
         logger.info(f"✓ Step 2 complete - Transcription ready")
@@ -178,6 +223,9 @@ def process_job(job_id: str):
         logger.info("STEP 3: GENERATE HIGHLIGHTS")
         logger.info("-"*60)
         db.update_job(job_id, step='generate_highlights', progress=70)
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled before highlight generation: {job_id}")
+            return
         
         existing_clips = db.get_clips_by_job(job_id)
         
@@ -198,6 +246,10 @@ def process_job(job_id: str):
             logger.info("Generating highlights...")
             
             highlights = generate_highlights(transcript)
+
+            if is_job_cancelled():
+                logger.info(f"⚠️ Job cancelled during highlight generation: {job_id}")
+                return
             
             if not highlights:
                 error_msg = 'No highlights generated - video may not have enough spoken content'
@@ -212,8 +264,14 @@ def process_job(job_id: str):
             logger.info("STEP 4: CREATE CLIPS AND THUMBNAILS")
             logger.info("-"*60)
             db.update_job(job_id, step='create_clips', progress=80)
+            if is_job_cancelled():
+                logger.info(f"⚠️ Job cancelled before clip creation: {job_id}")
+                return
             
             for i, hl in enumerate(highlights):
+                if is_job_cancelled():
+                    logger.info(f"⚠️ Job cancelled during clip creation: {job_id}")
+                    return
                 clip_id = str(uuid.uuid4())
                 
                 logger.info(f"Creating clip {i+1}/{len(highlights)}: {hl['title']}")
@@ -224,7 +282,7 @@ def process_job(job_id: str):
                 thumbnail_path = THUMBNAILS_DIR / f"{clip_id}.jpg"
                 
                 logger.debug(f"  Generating thumbnail at {mid_time:.1f}s...")
-                generate_thumbnail(raw_path, mid_time, thumbnail_path)
+                generate_thumbnail(analysis_path, mid_time, thumbnail_path)
                 
                 if thumbnail_path.exists():
                     logger.debug(f"  ✓ Thumbnail created: {thumbnail_path}")
@@ -267,6 +325,9 @@ def process_job(job_id: str):
         logger.info("-"*60)
         logger.info("JOB COMPLETE - READY FOR PREVIEW")
         logger.info("-"*60)
+        if is_job_cancelled():
+            logger.info(f"⚠️ Job cancelled before completion: {job_id}")
+            return
         db.update_job(job_id, status='ready', step='preview_ready', progress=100)
         logger.info(f"✓ Job {job_id} is ready for preview and rendering")
         
@@ -315,6 +376,11 @@ def process_render(render_id: str):
             logger.error(f"❌ Render not found in database: {render_id}")
             return
         
+        # Check if cancelled before starting
+        if render.get("status") == "cancelled":
+            logger.info(f"⚠️ Render was cancelled before processing started: {render_id}")
+            return
+        
         logger.info(f"Render options: {render.get('options', {})}")
         
         clip = db.get_clip(render['clip_id'])
@@ -328,26 +394,41 @@ def process_render(render_id: str):
         logger.info(f"Clip time: {clip['start_sec']:.1f}s - {clip['end_sec']:.1f}s")
         
         job = db.get_job(clip['job_id'])
-        if not job or not job.get('raw_path'):
-            error_msg = 'Job video not found or raw_path not set'
+        if not job:
+            error_msg = 'Job not found'
             logger.error(f"❌ {error_msg}")
             db.update_render(render_id, status='failed', error=error_msg)
             return
         
         logger.info(f"Job ID: {job['id']}")
         
-        raw_path = Path(job['raw_path'])
-        if not raw_path.exists():
-            error_msg = f'Raw video file not found: {raw_path}'
+        # Use RAW video for rendering (not normalized) to avoid A/V sync issues
+        # Normalized video is only used for transcription
+        if not job.get('raw_path'):
+            error_msg = 'Job video not found or raw_path not set'
+            logger.error(f"❌ {error_msg}")
+            db.update_render(render_id, status='failed', error=error_msg)
+            return
+        source_path = Path(job['raw_path'])
+        if not source_path.exists():
+            error_msg = f'Raw video file not found: {source_path}'
             logger.error(f"❌ {error_msg}")
             db.update_render(render_id, status='failed', error=error_msg)
             return
         
-        file_size = raw_path.stat().st_size
-        logger.info(f"Source video: {raw_path} ({file_size / 1024 / 1024:.1f} MB)")
+        logger.info(f"Using raw video for render (preserves A/V sync): {source_path}")
+        
+        file_size = source_path.stat().st_size
+        logger.info(f"Source video: {source_path} ({file_size / 1024 / 1024:.1f} MB)")
         
         # Update status
         db.update_render(render_id, status='processing', progress=10)
+        
+        # Check if cancelled after status update
+        render = db.get_render(render_id)
+        if render.get("status") == "cancelled":
+            logger.info(f"⚠️ Render was cancelled during processing: {render_id}")
+            return
         
         # Get options
         options = render.get('options', {})
@@ -380,11 +461,17 @@ def process_render(render_id: str):
         logger.info("-"*60)
         db.update_render(render_id, progress=30)
         
+        # Check cancelled before render
+        render = db.get_render(render_id)
+        if render.get("status") == "cancelled":
+            logger.info(f"⚠️ Render was cancelled before video rendering: {render_id}")
+            return
+        
         logger.info(f"Starting render process...")
         logger.info(f"Output: {output_path}")
         
         s3_url = render_clip(
-            video_path=raw_path,
+            video_path=source_path,
             output_path=output_path,
             start_sec=clip['start_sec'],
             end_sec=clip['end_sec'],

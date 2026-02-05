@@ -6,6 +6,7 @@ import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, Chec
 import { getApiEndpoint } from '@/lib/api';
 import { isValidYouTubeUrl, validateVideoFile } from '@/lib/validation';
 import { LicenseStatus } from '@/types/license';
+import { useJobTracking } from '@/hooks/useJobTracking';
 
 function useLicenseStatus() {
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
@@ -43,6 +44,7 @@ function useLicenseStatus() {
 
 export default function Home() {
   const licenseStatus = useLicenseStatus();
+  const { trackJob } = useJobTracking();
   const [sourceType, setSourceType] = useState<'youtube' | 'upload'>('youtube');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -117,6 +119,10 @@ export default function Home() {
       }
       const data = await response.json();
       setCreatedJobId(data.job_id);
+      
+      // Start tracking job processing
+      trackJob(data.job_id, sourceType === 'youtube' ? youtubeUrl : file?.name);
+      
       toast.success('Job created successfully!');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');

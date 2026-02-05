@@ -13,6 +13,7 @@ import {
 import { getApiUrl, getApiEndpoint } from '@/lib/api';
 import Breadcrumb from '@/components/Breadcrumb';
 import { SkeletonClipGrid } from '@/components/Skeleton';
+import { useDownloads } from '@/contexts/DownloadContext';
 
 interface Job {
   id: string;
@@ -56,11 +57,13 @@ export default function JobDetailPage() {
   const API_URL = getApiUrl();
   const params = useParams();
   const jobId = params.id as string;
+  const { addDownload, updateDownload } = useDownloads();
   
   const [job, setJob] = useState<Job | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
   const [previewClipId, setPreviewClipId] = useState<string | null>(null);
+  const [previewLoadedByClipId, setPreviewLoadedByClipId] = useState<Record<string, boolean>>({});
   const [faceTracking, setFaceTracking] = useState(true);
   const [smartCrop, setSmartCrop] = useState(false);
   const [captions, setCaptions] = useState(false);
@@ -71,6 +74,22 @@ export default function JobDetailPage() {
   const [isSubmittingSingle, setIsSubmittingSingle] = useState(false);
   
   const [renders, setRenders] = useState<Record<string, Render>>({});
+  const [autoDownloadQueue, setAutoDownloadQueue] = useState<Set<string>>(new Set());
+
+  // AI Caption generation state
+  const [generatingCaption, setGeneratingCaption] = useState<string | null>(null);
+  const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string>>({});
+  const [generatedHashtags, setGeneratedHashtags] = useState<Record<string, string>>({});
+  const [captionStyle, setCaptionStyle] = useState<string>("engaging");
+
+  const getRenderForClip = (clipId: string) => {
+    return Object.values(renders).find(r => r && r.clip_id === clipId);
+  };
+
+  const isRenderBlocked = (clipId: string) => {
+    const status = getRenderForClip(clipId)?.status;
+    return status === 'queued' || status === 'processing' || status === 'ready';
+  };
 
   // State for batch create clips
   const [batchClips, setBatchClips] = useState<NewClip[]>([{ start_sec: '', end_sec: '', title: '' }]);
@@ -214,6 +233,22 @@ export default function JobDetailPage() {
     }
   }, [job?.status, jobId]);
 
+  useEffect(() => {
+    if (job?.status === 'ready') {
+      fetch(`${API_URL}/api/jobs/${jobId}/renders`)
+        .then(res => res.json())
+        .then(data => {
+          const list = data.renders || [];
+          const map: Record<string, Render> = {};
+          for (const r of list) {
+            map[r.id] = r;
+          }
+          setRenders(map);
+        })
+        .catch(err => console.error("Error fetching renders:", err));
+    }
+  }, [job?.status, jobId]);
+
   // Track previous job status to avoid duplicate toasts
   const prevStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -221,9 +256,15 @@ export default function JobDetailPage() {
     if (job.status !== prevStatus.current) {
       if (job.status === "ready") toast.success("Job finished!");
       if (job.status === "failed") toast.error("Job failed");
+      if (job.status === "cancelled") toast.success("Job cancelled");
       prevStatus.current = job.status;
     }
   }, [job?.status]);
+
+  useEffect(() => {
+    if (!previewClipId) return;
+    setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: false }));
+  }, [previewClipId]);
 
   const toggleClipSelection = (clipId: string) => {
     setSelectedClips(prev => {
@@ -247,10 +288,24 @@ export default function JobDetailPage() {
 
   const renderSelectedClips = async () => {
     if (selectedClips.size === 0 || rendering) return; // Prevent spam
+
+    const blocked = new Set(
+      Object.values(renders)
+        .filter(r => r && (r.status === 'queued' || r.status === 'processing' || r.status === 'ready'))
+        .map(r => r.clip_id)
+        .filter(Boolean) as string[]
+    );
+    const eligibleClipIds = Array.from(selectedClips).filter(id => !blocked.has(id));
+
+    if (eligibleClipIds.length === 0) {
+      toast.error('Semua highlight sudah dirender atau sedang diproses.');
+      return;
+    }
+
     setRendering(true);
     try {
       const res = await fetch(`${API_URL}/api/jobs/${jobId}/render-selected?${new URLSearchParams({
-        clip_ids: Array.from(selectedClips).join(',')
+        clip_ids: eligibleClipIds.join(',')
       })}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,9 +323,26 @@ export default function JobDetailPage() {
       }
       const data = await res.json();
       for (const renderId of data.render_ids) {
-        pollRenderStatus(renderId);
+        // Find corresponding clip
+        const clipIndex = data.render_ids.indexOf(renderId);
+        const clipId = eligibleClipIds[clipIndex];
+        const clip = clips.find(c => c.id === clipId);
+        
+        // Add to download manager
+        addDownload({
+          id: renderId,
+          renderId,
+          clipTitle: clip?.title || `Clip ${clipIndex + 1}`,
+          jobId,
+          status: 'queued',
+          progress: 0,
+        });
       }
-      toast.success(`Rendering ${data.render_ids.length} clips started!`);
+      if (data.skipped?.length) {
+        toast.success(`Render ${data.render_ids.length} clip dimulai, ${data.skipped.length} dilewati.`);
+      } else {
+        toast.success(`Rendering ${data.render_ids.length} clips started!`);
+      }
     } catch (error) {
       console.error('Render error:', error);
       toast.error('Error starting render');
@@ -279,22 +351,78 @@ export default function JobDetailPage() {
     }
   };
 
-  const pollRenderStatus = async (renderId: string) => {
+  const pollRenderStatus = async (renderId: string, autoDownload = false) => {
     let notified = false;
     const poll = async () => {
       try {
         const res = await fetch(`${API_URL}/api/renders/${renderId}`);
         const render = await res.json();
         setRenders(prev => ({ ...prev, [renderId]: render }));
-        if ((render.status === 'ready' || render.status === 'failed') && !notified) {
+        
+        // Update download manager
+        updateDownload(renderId, {
+          status: render.status,
+          progress: render.progress || 0,
+          error: render.error,
+          downloadUrl: render.output_path ? `/api/renders/${renderId}/download` : undefined,
+        });
+        
+        if ((render.status === 'ready' || render.status === 'failed' || render.status === 'cancelled') && !notified) {
           notified = true;
+          
           if (render.status === 'ready') {
             toast.success('Render finished!');
+            
+            // Auto-download jika diminta
+            if (autoDownload && render.output_path) {
+              setTimeout(() => {
+                const downloadUrl = `${API_URL}/api/renders/${renderId}/download`;
+                console.log('Auto-downloading:', downloadUrl);
+                toast.success('Starting download...');
+                window.open(downloadUrl, '_blank');
+                
+                // Cleanup setelah 3 detik
+                setTimeout(() => {
+                  toast.success('Cleaning up...');
+                  fetch(`${API_URL}/api/renders/${renderId}`, { method: 'DELETE' })
+                    .then(() => {
+                      setRenders(prev => {
+                        const newRenders = { ...prev };
+                        delete newRenders[renderId];
+                        return newRenders;
+                      });
+                      setAutoDownloadQueue(prev => {
+                        const newQueue = new Set(prev);
+                        newQueue.delete(renderId);
+                        return newQueue;
+                      });
+                      toast.success('Render cleaned up!');
+                    })
+                    .catch(err => {
+                      console.error('Cleanup error:', err);
+                      toast.error('Failed to clean up');
+                    });
+                }, 3000);
+              }, 500);
+            }
           } else if (render.status === 'failed') {
             toast.error('Render failed.');
+            setAutoDownloadQueue(prev => {
+              const newQueue = new Set(prev);
+              newQueue.delete(renderId);
+              return newQueue;
+            });
+          } else if (render.status === 'cancelled') {
+            toast.success('Render cancelled!');
+            setAutoDownloadQueue(prev => {
+              const newQueue = new Set(prev);
+              newQueue.delete(renderId);
+              return newQueue;
+            });
           }
         }
-        if (render.status !== 'ready' && render.status !== 'failed') {
+        
+        if (render.status !== 'ready' && render.status !== 'failed' && render.status !== 'cancelled') {
           setTimeout(poll, 2000);
         }
       } catch (error) {
@@ -303,6 +431,126 @@ export default function JobDetailPage() {
     };
     poll();
   };
+
+  const handleCancelJob = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/jobs/${jobId}/cancel`, {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.detail || 'Failed to cancel job');
+        return;
+      }
+
+      toast.success('Job cancelled');
+      const jobRes = await fetch(`${API_URL}/api/jobs/${jobId}`);
+      const jobData = await jobRes.json();
+      setJob(jobData);
+    } catch (error) {
+      console.error('Cancel job error:', error);
+      toast.error('Error cancelling job');
+    }
+  };
+
+  const handleCancelRender = async (renderId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/renders/${renderId}/cancel`, {
+        method: 'POST'
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.detail || 'Failed to cancel render');
+        return;
+      }
+      
+      toast.success('Render cancelled!');
+      setAutoDownloadQueue(prev => {
+        const newQueue = new Set(prev);
+        newQueue.delete(renderId);
+        return newQueue;
+      });
+      
+      // Refresh render status
+      const renderRes = await fetch(`${API_URL}/api/renders/${renderId}`);
+      const render = await renderRes.json();
+      setRenders(prev => ({ ...prev, [renderId]: render }));
+    } catch (error) {
+      console.error('Cancel render error:', error);
+      toast.error('Error cancelling render');
+    }
+  };
+
+  const handleDeleteRender = async (renderId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/renders/${renderId}`, {
+        method: 'DELETE'
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.detail || 'Failed to delete render');
+        return;
+      }
+      
+      toast.success('Render deleted!');
+      setRenders(prev => {
+        const newRenders = { ...prev };
+        delete newRenders[renderId];
+        return newRenders;
+      });
+    } catch (error) {
+      console.error('Delete render error:', error);
+      toast.error('Error deleting render');
+    }
+  };
+
+  const handleGenerateCaption = async (clipId: string) => {
+    if (generatingCaption === clipId) return;
+    
+    setGeneratingCaption(clipId);
+    try {
+      // Generate caption
+      const captionRes = await fetch(`${API_URL}/api/clips/${clipId}/generate-caption?style=${captionStyle}&max_length=150`, {
+        method: 'POST'
+      });
+      
+      if (!captionRes.ok) {
+        const err = await captionRes.json();
+        toast.error(err.detail || 'Failed to generate caption');
+        return;
+      }
+      
+      const captionData = await captionRes.json();
+      setGeneratedCaptions(prev => ({ ...prev, [clipId]: captionData.caption }));
+      
+      // Generate hashtags bersamaan
+      const hashtagRes = await fetch(`${API_URL}/api/clips/${clipId}/generate-hashtags?count=10`, {
+        method: 'POST'
+      });
+      
+      if (hashtagRes.ok) {
+        const hashtagData = await hashtagRes.json();
+        setGeneratedHashtags(prev => ({ ...prev, [clipId]: hashtagData.hashtags }));
+      }
+      
+      toast.success('Caption & hashtags generated!');
+    } catch (error) {
+      console.error('Generate caption/hashtags error:', error);
+      toast.error('Error generating caption & hashtags');
+    } finally {
+      setGeneratingCaption(null);
+    }
+  };
+
+  const handleCopyCaption = (caption: string) => {
+    navigator.clipboard.writeText(caption);
+    toast.success('Caption copied to clipboard!');
+  };
+
+  const eligibleSelectedCount = Array.from(selectedClips).filter(id => !isRenderBlocked(id)).length;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -380,7 +628,7 @@ export default function JobDetailPage() {
         )}
 
         {/* Job Processing State with Modern Progress Bar */}
-        {job.status === 'processing' && (
+        {['processing', 'queued'].includes(job.status) && (
           <div className="bg-slate-900/50 border border-blue-500/20 rounded-2xl p-8 mb-8 text-center backdrop-blur-sm">
             <div className="max-w-md mx-auto">
                <div className="flex justify-between text-sm font-medium mb-2">
@@ -390,6 +638,12 @@ export default function JobDetailPage() {
                <div className="h-2 bg-slate-800 rounded-full overflow-hidden shadow-inner">
                   <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-300" style={{ width: `${job.progress}%` }} />
                </div>
+               <button
+                 onClick={handleCancelJob}
+                 className="mt-4 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors"
+               >
+                 Cancel Job
+               </button>
             </div>
           </div>
         )}
@@ -530,6 +784,12 @@ export default function JobDetailPage() {
                              controls
                              autoPlay
                              className="w-full h-full object-cover"
+                             onLoadedData={() => {
+                               setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: true }));
+                             }}
+                             onError={() => {
+                               setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: false }));
+                             }}
                            >
                              <source
                                src={`${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`}
@@ -574,73 +834,179 @@ export default function JobDetailPage() {
                         </div>
 
                         {/* Caption & Hashtags Panel */}
-                        {(activeClip.caption_text || activeClip.hashtags_text) && (
-                          <div className="bg-gradient-to-br from-emerald-900/20 to-blue-900/20 rounded-xl p-5 mb-6 border border-emerald-500/20 space-y-4">
-                            {/* Caption Section */}
-                            {activeClip.caption_text && (
-                              <div>
-                                <div className="flex items-center justify-between mb-3">
-                                  <h4 className="text-xs uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
-                                    <FileText size={14} /> Social Media Caption
-                                  </h4>
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(activeClip.caption_text || '');
-                                      toast.success('Caption copied to clipboard!');
-                                    }}
-                                    className="px-3 py-1.5 bg-emerald-700/50 hover:bg-emerald-600/70 rounded-lg text-emerald-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                                  >
-                                    <Copy size={12} /> Copy Caption
-                                  </button>
+                        <div className="bg-gradient-to-br from-emerald-900/20 to-blue-900/20 rounded-xl p-5 mb-6 border border-emerald-500/20 space-y-4">
+                          {/* AI Caption Generator */}
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-xs uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-2">
+                                <FileText size={14} /> AI Caption Generator
+                              </h4>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={captionStyle}
+                                  onChange={(e) => setCaptionStyle(e.target.value)}
+                                  className="px-2 py-1 bg-slate-800 text-white text-xs rounded-lg border border-white/10 focus:border-emerald-500 focus:outline-none"
+                                >
+                                  <option value="engaging">Engaging</option>
+                                  <option value="professional">Professional</option>
+                                  <option value="casual">Casual</option>
+                                  <option value="funny">Funny</option>
+                                  <option value="viral">Viral</option>
+                                </select>
+                                <button
+                                  onClick={() => handleGenerateCaption(activeClip.id)}
+                                  disabled={generatingCaption === activeClip.id}
+                                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white text-xs font-medium flex items-center gap-1.5 transition-all disabled:opacity-50"
+                                >
+                                  {generatingCaption === activeClip.id ? (
+                                    <>
+                                      <Loader2 size={12} className="animate-spin" /> Generating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Wand2 size={12} /> Generate
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                            
+                            {generatedCaptions[activeClip.id] && (
+                              <div className="space-y-3">
+                                {/* Caption Display */}
+                                <div className="relative bg-slate-900/50 rounded-lg p-4 border border-emerald-500/20">
+                                  <p className="text-slate-200 leading-relaxed text-sm whitespace-pre-line mb-3">
+                                    {generatedCaptions[activeClip.id]}
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleCopyCaption(generatedCaptions[activeClip.id])}
+                                      className="px-3 py-1.5 bg-emerald-700/50 hover:bg-emerald-600/70 rounded-lg text-emerald-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                    >
+                                      <Copy size={12} /> Copy
+                                    </button>
+                                    <button
+                                      onClick={() => handleGenerateCaption(activeClip.id)}
+                                      className="px-3 py-1.5 bg-slate-700/50 hover:bg-slate-600/70 rounded-lg text-slate-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                    >
+                                      <Wand2 size={12} /> Regenerate
+                                    </button>
+                                  </div>
                                 </div>
-                                <p className="text-slate-200 leading-relaxed text-sm whitespace-pre-line">
-                                  {activeClip.caption_text}
-                                </p>
+
+                                {/* Hashtags Display */}
+                                {generatedHashtags[activeClip.id] && (
+                                  <div className="relative bg-slate-900/50 rounded-lg p-4 border border-blue-500/20">
+                                    <p className="text-slate-200 text-sm break-words">
+                                      {generatedHashtags[activeClip.id]}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-3">
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(generatedHashtags[activeClip.id]);
+                                          toast.success('Hashtags copied!');
+                                        }}
+                                        className="px-3 py-1.5 bg-blue-700/50 hover:bg-blue-600/70 rounded-lg text-blue-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                      >
+                                        <Copy size={12} /> Copy
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
-
-                            {/* Hashtags Section */}
-                            {activeClip.hashtags_text && (
-                              <div>
-                                <div className="flex items-center justify-between mb-3">
-                                  <h4 className="text-xs uppercase tracking-wider text-blue-400 font-semibold flex items-center gap-2">
-                                    <Hash size={14} /> Hashtags
-                                  </h4>
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(activeClip.hashtags_text || '');
-                                      toast.success('Hashtags copied to clipboard!');
-                                    }}
-                                    className="px-3 py-1.5 bg-blue-700/50 hover:bg-blue-600/70 rounded-lg text-blue-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                                  >
-                                    <Copy size={12} /> Copy Hashtags
-                                  </button>
-                                </div>
-                                <p className="text-blue-200 leading-relaxed text-sm font-medium">
-                                  {activeClip.hashtags_text}
-                                </p>
-                              </div>
+                            
+                            {!generatedCaptions[activeClip.id] && generatingCaption !== activeClip.id && (
+                              <p className="text-slate-500 text-xs italic">
+                                Click "Generate" to create an AI-powered caption for social media
+                              </p>
                             )}
                           </div>
-                        )}
+
+                          {/* Original Caption Section (if exists) */}
+                          {activeClip.caption_text && (
+                            <div className="pt-4 border-t border-white/5">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-2">
+                                  <FileText size={14} /> Original Caption
+                                </h4>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(activeClip.caption_text || '');
+                                    toast.success('Caption copied to clipboard!');
+                                  }}
+                                  className="px-3 py-1.5 bg-slate-700/50 hover:bg-slate-600/70 rounded-lg text-slate-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                >
+                                  <Copy size={12} /> Copy
+                                </button>
+                              </div>
+                              <p className="text-slate-300 leading-relaxed text-sm whitespace-pre-line">
+                                {activeClip.caption_text}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Hashtags Section */}
+                          {activeClip.hashtags_text && (
+                            <div className="pt-4 border-t border-white/5">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-xs uppercase tracking-wider text-blue-400 font-semibold flex items-center gap-2">
+                                  <Hash size={14} /> Hashtags
+                                </h4>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(activeClip.hashtags_text || '');
+                                    toast.success('Hashtags copied to clipboard!');
+                                  }}
+                                  className="px-3 py-1.5 bg-blue-700/50 hover:bg-blue-600/70 rounded-lg text-blue-100 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                >
+                                  <Copy size={12} /> Copy Hashtags
+                                </button>
+                              </div>
+                              <p className="text-blue-200 leading-relaxed text-sm font-medium">
+                                {activeClip.hashtags_text}
+                              </p>
+                            </div>
+                          )}
+                        </div>
 
                         {/* Action Bar inside Preview */}
                         <div className="mt-auto border-t border-white/5 pt-6 flex flex-wrap items-center justify-between gap-4">
                            <div className="flex items-center gap-3">
-                             {/* Download link for render if available */}
-                             {(() => {
-                               // Cari render untuk clip ini
-                               const render = Object.values(renders).find(r => r && r.status === 'ready' && r.clip_id === activeClip.id);
-                               const url = render && getRenderDownloadUrl(render, API_URL);
-                               return url ? (
-                                 <a href={url} target="_blank" rel="noopener noreferrer" className="ml-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm">Download</a>
-                               ) : null;
-                             })()}
-
-                              <button
-                                aria-label="Render this clip"
-                                onClick={async () => {
-                                  if (isSubmittingSingle) return;
+                              {(() => {
+                                const renderStatus = getRenderForClip(activeClip.id)?.status;
+                                const renderRecord = getRenderForClip(activeClip.id);
+                                
+                                // 1 KLIK untuk semua: Render -> Auto-download -> Cleanup
+                                const handleRenderOrDownload = async () => {
+                                  // Cek apakah sudah ada render yang ready, langsung download + cleanup
+                                  if (renderStatus === 'ready' && renderRecord?.id) {
+                                    const downloadUrl = `${API_URL}/api/renders/${renderRecord.id}/download`;
+                                    
+                                    console.log('Opening download:', downloadUrl);
+                                    toast.success('Download starting...');
+                                    window.open(downloadUrl, '_blank');
+                                    
+                                    setTimeout(() => {
+                                      toast.success('Cleaning up...');
+                                      fetch(`${API_URL}/api/renders/${renderRecord.id}`, { method: 'DELETE' })
+                                        .then(() => {
+                                          setRenders(prev => {
+                                            const newRenders = { ...prev };
+                                            delete newRenders[renderRecord.id];
+                                            return newRenders;
+                                          });
+                                          toast.success('Cleaned up!');
+                                        })
+                                        .catch(err => toast.error('Failed to clean up'));
+                                    }, 3000);
+                                    return;
+                                  }
+                                  
+                                  // Jika sudah processing, jangan submit lagi
+                                  if (isSubmittingSingle || renderStatus === 'queued' || renderStatus === 'processing') return;
+                                  
+                                  // Start render dengan auto-download
                                   setIsSubmittingSingle(true);
                                   try {
                                     const res = await fetch(`${API_URL}/api/clips/${activeClip.id}/render`, {
@@ -654,25 +1020,117 @@ export default function JobDetailPage() {
                                       return;
                                     }
                                     const data = await res.json();
-                                    pollRenderStatus(data.render_id);
-                                    toast.success('Render started!');
+                                    
+                                    // Add to download manager
+                                    addDownload({
+                                      id: data.render_id,
+                                      renderId: data.render_id,
+                                      clipTitle: activeClip.title,
+                                      jobId,
+                                      status: 'queued',
+                                      progress: 0,
+                                    });
+                                    
+                                    // Tandai untuk auto-download
+                                    setAutoDownloadQueue(prev => new Set(prev).add(data.render_id));
+                                    
+                                    toast.success('Render started! Will auto-download when ready.');
                                   } catch (err) {
                                     console.error(err);
                                     toast.error('Error starting render');
                                   } finally {
                                     setIsSubmittingSingle(false);
                                   }
-                                }}
-                                disabled={isSubmittingSingle}
-                                className={`px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 ${
-                                  isSubmittingSingle 
-                                    ? 'bg-indigo-600/50 cursor-not-allowed opacity-70' 
-                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                                }`}
-                             >
-                                {isSubmittingSingle ? <Loader2 size={18} className="animate-spin" /> : <Wand2 size={18} />} 
-                                {isSubmittingSingle ? 'Processing...' : 'Render This'}
-                             </button>
+                                };
+
+                                const isProcessing = renderStatus === 'queued' || renderStatus === 'processing';
+                                const isReady = renderStatus === 'ready';
+                                const isFailed = renderStatus === 'failed';
+                                const isCancelled = renderStatus === 'cancelled';
+                                const renderProgress = renderRecord?.progress || 0;
+                                const isInAutoDownloadQueue = renderRecord?.id ? autoDownloadQueue.has(renderRecord.id) : false;
+                                const isPreviewLoaded = previewClipId ? !!previewLoadedByClipId[previewClipId] : false;
+                                
+                                let label = 'Render & Download';
+                                let icon = <Wand2 size={18} />;
+                                let isDisabled = false;
+
+                                if (isProcessing) {
+                                  label = `Rendering ${Math.round(renderProgress)}%`;
+                                  icon = <Loader2 size={18} className="animate-spin" />;
+                                  isDisabled = true;
+                                } else if (!isPreviewLoaded) {
+                                  label = 'Loading preview...';
+                                  icon = <Loader2 size={18} className="animate-spin" />;
+                                  isDisabled = true;
+                                } else if (isReady && isInAutoDownloadQueue) {
+                                  // Sedang menunggu auto-download
+                                  label = 'Downloading...';
+                                  icon = <Download size={18} className="animate-pulse" />;
+                                  isDisabled = true;
+                                } else if (isReady && !isInAutoDownloadQueue) {
+                                  // Render sudah ready tapi bukan dari auto-download (legacy)
+                                  label = 'Download & Cleanup';
+                                  icon = <Download size={18} />;
+                                }
+
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-2">
+                                      <button
+                                        aria-label={label}
+                                        onClick={handleRenderOrDownload}
+                                        disabled={isDisabled}
+                                        className={`px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+                                          isDisabled
+                                            ? 'bg-indigo-600/50 cursor-not-allowed opacity-70'
+                                            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                                        }`}
+                                      >
+                                        {icon}
+                                        {label}
+                                      </button>
+                                      {isProcessing && (
+                                        <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                                          <div 
+                                            className="bg-indigo-500 h-full transition-all duration-500 ease-out"
+                                            style={{ width: `${renderProgress}%` }}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Cancel/Delete Button */}
+                                    {renderRecord && (
+                                      <>
+                                        {/* Cancel button for queued/processing */}
+                                        {isProcessing && !isInAutoDownloadQueue && (
+                                          <button
+                                            onClick={() => handleCancelRender(renderRecord.id)}
+                                            className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold flex items-center gap-2 transition-all"
+                                            aria-label="Cancel render"
+                                          >
+                                            <X size={18} />
+                                            Cancel
+                                          </button>
+                                        )}
+                                        
+                                        {/* Delete button for ready/failed/cancelled (tidak bisa delete saat downloading) */}
+                                        {(isReady || isFailed || isCancelled) && !isInAutoDownloadQueue && (
+                                          <button
+                                            onClick={() => handleDeleteRender(renderRecord.id)}
+                                            className="px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold flex items-center gap-2 transition-all"
+                                            aria-label="Delete render"
+                                          >
+                                            <X size={18} />
+                                            Delete
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                            </div>
 
                            <div className="flex items-center gap-2">
@@ -783,17 +1241,21 @@ export default function JobDetailPage() {
                   
                   <button
                     onClick={renderSelectedClips}
-                    disabled={selectedClips.size === 0 || rendering}
+                    disabled={eligibleSelectedCount === 0 || rendering}
                     className={`
                       relative group overflow-hidden pl-4 pr-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all
-                      ${selectedClips.size > 0 || rendering
+                      ${eligibleSelectedCount > 0 || rendering
                         ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/30 hover:shadow-emerald-900/50 hover:-translate-y-0.5' 
                         : 'bg-slate-800 text-slate-500 cursor-not-allowed'}
                       ${rendering ? 'opacity-80' : ''}
                     `}
                   >
                     {rendering ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} />}
-                    {rendering ? 'Rendering...' : `Render ${selectedClips.size} Clips`}
+                    {rendering
+                      ? 'Rendering...'
+                      : eligibleSelectedCount === 0
+                        ? 'All Rendered'
+                        : `Render ${eligibleSelectedCount} Clips`}
                   </button>
                </div>
             </div>
@@ -931,7 +1393,28 @@ export default function JobDetailPage() {
           </>
         )}
       </div>
-
+      
+      {/* Floating Render Progress Indicator */}
+      {(() => {
+        const processingRenders = Object.values(renders).filter(r => r && (r.status === 'queued' || r.status === 'processing'));
+        if (processingRenders.length === 0) return null;
+        
+        return (
+          <div className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white px-6 py-4 rounded-2xl shadow-2xl border border-indigo-400/30 backdrop-blur-xl animate-in slide-in-from-bottom-4">
+            <div className="flex items-center gap-3">
+              <Loader2 size={20} className="animate-spin" />
+              <div>
+                <div className="font-bold text-sm">
+                  {processingRenders.length} clip{processingRenders.length > 1 ? 's' : ''} rendering
+                </div>
+                <div className="text-xs text-indigo-200 mt-0.5">
+                  {processingRenders.map(r => `${Math.round(r.progress || 0)}%`).join(', ')}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
