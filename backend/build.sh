@@ -49,14 +49,14 @@ echo ""
 echo "================================"
 echo "Build complete!"
 echo "================================"
-echo "Executable location: dist/app/"
+echo "Executable location: dist/antariks-backend/"
 echo ""
 echo "To test the build:"
-echo "  cd dist/app"
+echo "  cd dist/antariks-backend"
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    echo "  ./app.exe"
+    echo "  ./antariks-backend.exe"
 else
-    echo "  ./app"
+    echo "  ./antariks-backend"
 fi
 echo ""
 echo "Note: You may need to bundle FFmpeg binaries separately for Windows distribution."

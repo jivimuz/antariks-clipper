@@ -13,7 +13,8 @@ ENV/
 env/
 *.egg-info/
 dist/
-build/
+# Backend build artifacts
+backend/build/
 
 
 node_modules/
@@ -25,7 +26,6 @@ frontend/out/
 frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local
-frontend/.env.production.local
 backend/.env
 
 # Electron build artifacts
@@ -36,6 +36,7 @@ frontend/build/*.icns
 frontend/build/*.png
 !frontend/build/.gitkeep
 !frontend/build/README.md
+!frontend/build/.gitignore
 
 # OS
 .DS_Store

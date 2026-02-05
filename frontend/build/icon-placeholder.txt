@@ -1,0 +1,12 @@
+This is a placeholder for application icons.
+
+To complete the build, you need to add:
+- icon.ico (Windows)
+- icon.icns (macOS)  
+- icon.png (Linux)
+
+See README.md in this directory for instructions.
+
+For testing purposes, you can:
+1. Comment out icon paths in package.json
+2. Or use default Electron icons

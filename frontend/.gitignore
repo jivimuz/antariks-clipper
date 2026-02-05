@@ -19,7 +19,15 @@
 /backend/.env
 
 # production
-/build
+# Electron builder output
+/dist
+
+# Build directory for icons (but allow README and .gitignore)
+/build/*.ico
+/build/*.icns
+/build/*.png
+!/build/README.md
+!/build/.gitignore
 
 # misc
 .DS_Store
@@ -33,6 +41,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.production
 
 # vercel
 .vercel

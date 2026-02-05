@@ -5,50 +5,6 @@ const BackendLauncher = require('./backend-launcher');
 
 let mainWindow = null;
 let backendLauncher = null;
-let nextApp = null;
-
-/**
- * Start Next.js production server
- */
-async function startNextServer() {
-  if (isDev) {
-    // In development, assume Next.js dev server is already running
-    return true;
-  }
-
-  try {
-    const { spawn } = require('child_process');
-    const nextPath = path.join(__dirname, '..', 'node_modules', '.bin', 'next');
-    const appPath = path.join(__dirname, '..');
-
-    console.log('Starting Next.js production server...');
-    
-    nextApp = spawn(process.platform === 'win32' ? 'cmd' : nextPath, 
-      process.platform === 'win32' ? ['/c', 'next', 'start', '-p', '3000'] : ['start', '-p', '3000'],
-      {
-        cwd: appPath,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, NODE_ENV: 'production' }
-      }
-    );
-
-    nextApp.stdout.on('data', (data) => {
-      console.log('[Next.js]', data.toString().trim());
-    });
-
-    nextApp.stderr.on('data', (data) => {
-      console.error('[Next.js Error]', data.toString().trim());
-    });
-
-    // Wait for Next.js to be ready
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    
-    return true;
-  } catch (error) {
-    console.error('Failed to start Next.js server:', error);
-    return false;
-  }
-}
 
 /**
  * Create the main application window
@@ -64,10 +20,18 @@ function createWindow() {
       enableRemoteModule: false,
     },
     show: false, // Don't show until ready
+    title: 'Antariks Clipper'
   });
 
   // Load the app
-  const startUrl = 'http://localhost:3000';
+  let startUrl;
+  if (isDev) {
+    // Development: load from Next.js dev server
+    startUrl = 'http://localhost:3000';
+  } else {
+    // Production: load from static HTML export
+    startUrl = `file://${path.join(__dirname, '../out/index.html')}`;
+  }
 
   console.log('Loading URL:', startUrl);
   mainWindow.loadURL(startUrl);
@@ -95,6 +59,7 @@ async function initialize() {
   console.log('Initializing Antariks Clipper...');
   console.log('Platform:', process.platform);
   console.log('Development mode:', isDev);
+  console.log('Resources path:', process.resourcesPath);
 
   // Start backend
   backendLauncher = new BackendLauncher();
@@ -117,22 +82,8 @@ async function initialize() {
         return;
       }
     }
-
-    // Start Next.js server (in production)
-    if (!isDev) {
-      const nextStarted = await startNextServer();
-      if (!nextStarted) {
-        await dialog.showMessageBox({
-          type: 'error',
-          title: 'Next.js Error',
-          message: 'Failed to start the frontend server',
-        });
-        app.quit();
-        return;
-      }
-    }
     
-    // Create window after servers are ready
+    // Create window after backend is ready
     createWindow();
   } catch (error) {
     console.error('Failed to initialize:', error);
@@ -157,11 +108,6 @@ async function cleanup() {
   if (backendLauncher) {
     backendLauncher.stop();
   }
-
-  if (nextApp && !isDev) {
-    console.log('Stopping Next.js server...');
-    nextApp.kill('SIGTERM');
-  }
 }
 
 // App lifecycle events
@@ -177,7 +123,7 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   // On macOS, recreate window when dock icon is clicked
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    initialize();
   }
 });
 
@@ -195,6 +141,19 @@ const { ipcMain } = require('electron');
 ipcMain.handle('get-version', () => {
   return app.getVersion();
 });
+
+// Handle second instance (single instance lock)
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 // Graceful shutdown on uncaught errors
 process.on('uncaughtException', (error) => {

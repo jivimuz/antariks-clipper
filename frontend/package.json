@@ -8,13 +8,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "export": "next build",
     "electron": "electron .",
     "electron-dev": "concurrently \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:linux": "npm run build && electron-builder --linux"
+    "build:backend": "cd ../backend && (build.bat || ./build.sh)",
+    "build:frontend": "next build",
+    "prebuild:electron": "npm run build:frontend",
+    "build:electron": "electron-builder",
+    "pack": "npm run build:frontend && electron-builder --dir",
+    "dist": "npm run build:frontend && electron-builder",
+    "dist:win": "npm run build:frontend && electron-builder --win",
+    "dist:mac": "npm run build:frontend && electron-builder --mac",
+    "dist:linux": "npm run build:frontend && electron-builder --linux",
+    "dist:full": "npm run build:backend && npm run dist"
   },
   "dependencies": {
     "lucide-react": "^0.563.0",
@@ -28,6 +34,7 @@
     "@types/node": "^20",
     "@types/react": "^19.2.10",
     "@types/react-dom": "^19.2.3",
+    "asar": "^3.2.0",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^28.0.0",
@@ -41,44 +48,37 @@
   },
   "build": {
     "appId": "com.antariks.clipper",
-    "productName": "Antariks Clipper",
+    "productName": "AntariksClipper",
     "copyright": "Copyright © 2026 Antariks",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
     "files": [
-      ".next/**/*",
-      "public/**/*",
+      "out/**/*",
       "electron/**/*",
       "node_modules/**/*",
       "package.json"
     ],
     "extraResources": [
       {
-        "from": "../backend",
+        "from": "../backend/dist/antariks-backend",
         "to": "backend",
-        "filter": [
-          "**/*",
-          "!.venv/**/*",
-          "!data/**/*",
-          "!__pycache__/**/*",
-          "!*.pyc",
-          "!.env",
-          "!test_*.py",
-          "!*_test.py"
-        ]
-      },
-      {
-        "from": "resources",
-        "to": ".",
         "filter": ["**/*"]
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
       "icon": "build/icon.ico",
-      "artifactName": "AntariksClipper-Setup-${version}.${ext}"
+      "artifactName": "AntariksClipper-${version}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
     },
     "mac": {
       "target": ["dmg", "zip"],
@@ -91,11 +91,15 @@
       "category": "Video"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Antariks Clipper"
+      "shortcutName": "Antariks Clipper",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   }
 }

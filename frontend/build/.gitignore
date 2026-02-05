@@ -1,0 +1,10 @@
+# Ignore actual icon files (add them when ready)
+icon.ico
+icon.icns
+icon.png
+*.icns
+*.ico
+
+# But keep the README
+!README.md
+!.gitignore
