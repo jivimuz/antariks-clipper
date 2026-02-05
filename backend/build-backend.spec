@@ -74,12 +74,12 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='app',
+    name='antariks-backend',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # Set to True for debugging, False for production
+    console=False,  # Hide console window for production
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -95,5 +95,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='app',
+    name='antariks-backend',
 )

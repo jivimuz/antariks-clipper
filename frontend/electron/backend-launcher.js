@@ -14,7 +14,7 @@ class BackendLauncher {
   /**
    * Get the Python executable path
    * In development: use system Python
-   * In production: use bundled Python/PyInstaller exe
+   * In production: use bundled PyInstaller exe
    */
   getPythonPath() {
     if (isDev) {
@@ -22,7 +22,7 @@ class BackendLauncher {
       return process.platform === 'win32' ? 'python' : 'python3';
     } else {
       // Production: use bundled backend executable
-      const exeName = process.platform === 'win32' ? 'app.exe' : 'app';
+      const exeName = process.platform === 'win32' ? 'antariks-backend.exe' : 'antariks-backend';
       return path.join(process.resourcesPath, 'backend', exeName);
     }
   }

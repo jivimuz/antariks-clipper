@@ -1,5 +1,7 @@
 """Main FastAPI application with clean route organization"""
 import logging
+import signal
+import sys
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Body, Header, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -717,4 +719,14 @@ def read_root():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(sig, frame):
+        """Handle shutdown signals gracefully"""
+        logger.info("Received shutdown signal, cleaning up...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     uvicorn.run(app, host="0.0.0.0", port=8000)
