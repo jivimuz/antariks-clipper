@@ -1,6 +1,6 @@
-# Desktop Application Build Guide
+# Building Antariks Clipper Desktop App - Single Executable
 
-This guide explains how to build and distribute Antariks Clipper as a standalone desktop application using Electron.
+This guide explains how to build Antariks Clipper as a **single executable file** (.exe) for Windows that contains both the Python backend and Electron frontend.
 
 ## Table of Contents
 
@@ -13,21 +13,23 @@ This guide explains how to build and distribute Antariks Clipper as a standalone
 
 ## Overview
 
-Antariks Clipper is packaged as an Electron desktop application that:
-- Automatically starts and stops the Python backend
-- Runs Next.js production server within Electron (not static export)
-- Supports dynamic routes and full Next.js features
-- Provides a native desktop experience
-- Supports Windows, macOS, and Linux
+Antariks Clipper is packaged as a single executable desktop application that:
+- ✅ Bundles Python backend using PyInstaller
+- ✅ Uses Next.js static export for frontend
+- ✅ Packages everything with Electron Builder
+- ✅ Auto-starts and stops backend process
+- ✅ Provides true "double-click and run" experience
+- ✅ No Python or Node.js installation required
 
 ## Prerequisites
 
 ### System Requirements
 
+- **Windows 10/11 (64-bit)** - For building Windows .exe
 - **Node.js 18+** - For frontend and Electron
-- **Python 3.8+** - For backend
+- **Python 3.8+** - For backend development and building
 - **FFmpeg** - Required for video processing
-  - Windows: Download from https://ffmpeg.org/download.html
+  - Windows: Download from https://ffmpeg.org/download.html and add to PATH
   - macOS: `brew install ffmpeg`
   - Linux: `sudo apt-get install ffmpeg`
 
@@ -36,6 +38,7 @@ Antariks Clipper is packaged as an Electron desktop application that:
 - Git
 - Text editor or IDE
 - Terminal/Command prompt
+- 5GB free disk space for build
 
 ## Development Setup
 
@@ -62,6 +65,7 @@ source .venv/bin/activate
 
 # Install Python packages
 pip install -r requirements_minimal.txt
+pip install pyinstaller
 ```
 
 ### 2. Running in Development Mode
@@ -82,338 +86,349 @@ This command:
 
 **Note**: The backend will automatically stop when you close the Electron window.
 
-### 3. Development Workflow
-
-When developing:
-- Frontend changes: Next.js hot-reload works automatically
-- Backend changes: Restart the Electron app to pick up backend changes
-- Electron main process changes: Restart the Electron app
-
-To restart:
-1. Close the Electron window
-2. Run `npm run electron-dev` again
-
 ## Building the Application
 
-### 1. Prepare Application Icons
+### Option 1: Automated Build (Recommended)
 
-Before building, create application icons:
+From project root:
 
-```bash
-cd frontend/build
+**Windows:**
+```batch
+build-all.bat
 ```
 
-Required icons:
-- **icon.ico** - Windows (256x256 pixels)
-- **icon.icns** - macOS icon bundle
-- **icon.png** - Linux (512x512 pixels)
-
-See `frontend/build/README.md` for icon creation instructions.
-
-### 2. Build Frontend for Production
-
+**macOS/Linux:**
 ```bash
-cd frontend
-npm run build
-```
-
-This creates a Next.js production build in `frontend/.next/` directory.
-
-### 3. Build Desktop Application
-
-#### Build for Current Platform
-
-```bash
-cd frontend
-npm run dist
+./build-all.sh
 ```
 
 This will:
-1. Build the Next.js production bundle
-2. Package with Electron (including Next.js server)
-3. Create an installer in `frontend/dist/`
+1. Build the backend with PyInstaller (creates `antariks-backend.exe`)
+2. Build the frontend with Next.js (static export to `out/`)
+3. Package everything with Electron Builder (single installer .exe)
 
-#### Build for Specific Platform
+**Output**: `frontend/dist/AntariksClipper-1.0.0.exe`
 
-```bash
-# Windows
-npm run dist:win
+### Option 2: Manual Build Steps
 
-# macOS
-npm run dist:mac
-
-# Linux
-npm run dist:linux
-```
-
-#### Test Without Creating Installer
-
-To test the packaged app without creating an installer:
-
-```bash
-npm run pack
-```
-
-This creates an unpacked version in `frontend/dist/[platform]-unpacked/`.
-
-### 4. Backend Bundling (Optional for Production)
-
-For true standalone distribution, bundle the Python backend with PyInstaller:
+#### Step 1: Build Backend
 
 ```bash
 cd backend
+
+# Windows:
+build.bat
+
+# macOS/Linux:
 ./build.sh
 ```
 
-This creates a standalone backend executable in `backend/dist/app/`.
+This creates: `backend/dist/antariks-backend/` with `antariks-backend.exe`
 
-**Note**: Backend bundling is optional for development. The Electron app can use the system Python in development mode.
+#### Step 2: Build Frontend & Package
+
+```bash
+cd frontend
+
+# Build Next.js static export
+npm run build:frontend
+
+# Package with Electron Builder
+npm run build:electron
+```
+
+This creates: `frontend/dist/AntariksClipper-1.0.0.exe`
+
+### Build Configuration
+
+The build process is configured via:
+
+**Backend**: `backend/build-backend.spec`
+- PyInstaller configuration
+- Hidden imports for all Python dependencies
+- Console window disabled for production
+- Output name: `antariks-backend.exe`
+
+**Frontend**: `frontend/package.json` (build section)
+- Electron Builder configuration
+- ASAR packaging enabled
+- Backend embedded as extraResources
+- NSIS installer (one-click, single exe)
+
+**Next.js**: `frontend/next.config.ts`
+- Static HTML export enabled
+- Images unoptimized for static serving
+- API URL configured for local backend
 
 ## Distribution
 
-### Windows
+### Windows Installer
 
-**Installer**: `frontend/dist/AntariksClipper-Setup-[version].exe`
-- NSIS installer with custom installation directory
-- Creates desktop and start menu shortcuts
-- Approximately 100-500MB depending on bundling
+**File**: `frontend/dist/AntariksClipper-1.0.0.exe`
 
-**Portable**: `frontend/dist/AntariksClipper-[version].exe`
-- Runs without installation
-- Extracts to a temporary directory
+**Size**: Approximately 500-800MB (includes all dependencies)
 
-### macOS
+**What's included**:
+- ✅ Electron runtime
+- ✅ Next.js frontend (static HTML/CSS/JS)
+- ✅ Python backend (PyInstaller bundle)
+- ✅ All Python dependencies (FastAPI, Whisper, OpenCV, etc.)
+- ✅ Node.js native modules
 
-**DMG**: `frontend/dist/Antariks Clipper-[version].dmg`
-- Disk image for distribution
-- Drag-and-drop installation
+**Installation**:
+- One-click NSIS installer
+- Installs to user AppData (no admin required)
+- Creates desktop shortcut
+- Creates start menu shortcut
+- Auto-launches on completion (optional)
 
-**ZIP**: `frontend/dist/Antariks Clipper-[version]-mac.zip`
-- Direct archive of the app bundle
-- Unzip and move to Applications
+**User Experience**:
+1. Download `.exe` file
+2. Double-click to install
+3. Launch "Antariks Clipper" from desktop/start menu
+4. Backend starts automatically in background
+5. Frontend window opens
+6. Ready to use!
 
-### Linux
+### First Run
 
-**AppImage**: `frontend/dist/Antariks Clipper-[version].AppImage`
-- Self-contained executable
-- Works on most Linux distributions
-- Make executable: `chmod +x Antariks\ Clipper-[version].AppImage`
+On first launch:
+- App initializes (10-30 seconds)
+- Whisper model downloads (~150MB) if not present
+- Backend starts on port 8000
+- Frontend loads from static files
 
-**DEB**: `frontend/dist/antariks-clipper_[version]_amd64.deb`
-- For Debian/Ubuntu-based distributions
-- Install: `sudo dpkg -i antariks-clipper_[version]_amd64.deb`
+## Architecture
 
-## Project Structure
+### Single Executable Structure
 
 ```
-antariks-clipper/
-├── backend/
-│   ├── app.py                      # FastAPI application
-│   ├── build-backend.spec          # PyInstaller configuration
-│   ├── build.sh                    # Backend build script
-│   └── ...
-├── frontend/
-│   ├── electron/
-│   │   ├── main.js                 # Electron main process
-│   │   ├── preload.js              # Preload script
-│   │   └── backend-launcher.js     # Backend process manager
-│   ├── build/                      # Application icons
-│   ├── resources/                  # Additional resources (FFmpeg)
-│   ├── out/                        # Next.js static export (generated)
-│   ├── dist/                       # Electron builds (generated)
-│   └── package.json                # Includes Electron scripts
-└── DESKTOP_BUILD.md                # This file
+AntariksClipper-1.0.0.exe (NSIS Installer)
+└── Installed to: %LOCALAPPDATA%\Programs\antariks-clipper\
+    ├── AntariksClipper.exe          # Main Electron executable
+    ├── resources/
+    │   ├── app.asar                 # Frontend code (ASAR archive)
+    │   │   ├── out/                 # Next.js static export
+    │   │   ├── electron/            # Electron main process
+    │   │   └── node_modules/        # Node dependencies
+    │   └── backend/                 # Backend executable bundle
+    │       ├── antariks-backend.exe # PyInstaller executable
+    │       └── _internal/           # Python dependencies
+    └── (other Electron files)
 ```
+
+### Runtime Flow
+
+1. **User launches** `AntariksClipper.exe`
+2. **Electron main process** starts (`electron/main.js`)
+3. **Backend launcher** extracts and runs `antariks-backend.exe`
+4. **Health check** waits for backend to be ready (port 8000)
+5. **Browser window** loads static HTML from `out/index.html`
+6. **Frontend** makes API calls to `http://127.0.0.1:8000`
+7. **Backend** processes requests and returns data
+8. **On close**: Backend process terminates automatically
 
 ## Configuration
 
 ### Environment Variables
-
-**Development** (`frontend/.env.development`):
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
 
 **Production** (`frontend/.env.production`):
 ```
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
-### Electron Configuration
+This ensures all API calls go to the local backend.
 
-Main configuration in `frontend/package.json` under the `build` section:
+### Backend Configuration
 
-```json
-{
-  "build": {
-    "appId": "com.antariks.clipper",
-    "productName": "Antariks Clipper",
-    "files": ["out/**/*", "electron/**/*"],
-    "extraResources": [
-      {
-        "from": "../backend",
-        "to": "backend",
-        "filter": ["**/*", "!.venv/**/*", "!data/**/*"]
-      }
-    ]
-  }
-}
-```
+The backend runs on `127.0.0.1:8000` (localhost only, not exposed to network).
+
+To change the port, modify:
+- `frontend/electron/backend-launcher.js` (port variable)
+- `frontend/.env.production` (API URL)
+
+## Testing
+
+### Development Testing
+
+- [ ] `npm run electron-dev` starts both services
+- [ ] Frontend loads at localhost:3000
+- [ ] Backend accessible at localhost:8000
+- [ ] All features work (upload, YouTube, render)
+- [ ] DevTools show no errors
+
+### Production Build Testing
+
+- [ ] `build-all.bat` completes without errors
+- [ ] Single .exe file generated in `frontend/dist/`
+- [ ] .exe installs successfully
+- [ ] App launches after installation
+- [ ] Backend starts automatically (check Task Manager)
+- [ ] Frontend window opens and loads
+- [ ] All API calls work
+- [ ] Video processing works
+- [ ] App closes cleanly (no zombie processes)
+
+### Testing on Clean Machine
+
+To properly test the installer:
+1. Use a clean Windows VM or test machine
+2. Ensure NO Python or Node.js is installed
+3. Install the .exe
+4. Launch the app
+5. Test all features
+6. Close and verify cleanup
 
 ## Troubleshooting
 
-### Development Issues
-
-#### "Backend failed to start"
-
-**Cause**: Python or dependencies not available
-
-**Solutions**:
-1. Verify Python is installed: `python --version` or `python3 --version`
-2. Activate virtual environment and install dependencies
-3. Check backend logs in the Electron console (DevTools)
-4. Try running backend manually: `cd backend && uvicorn app:app --reload`
-
-#### "Cannot find module 'electron'"
-
-**Cause**: Dependencies not installed
-
-**Solution**:
-```bash
-cd frontend
-npm install
-```
-
-#### Port 8000 already in use
-
-**Cause**: Another backend instance is running
-
-**Solutions**:
-1. Stop other backend processes
-2. Change port in `frontend/electron/backend-launcher.js`
-
 ### Build Issues
 
-#### "Application icon not found"
+#### Backend build fails
 
-**Cause**: Icon files missing in `frontend/build/`
-
-**Solutions**:
-1. Add icon files as described in "Prepare Application Icons"
-2. Or temporarily comment out icon paths in `package.json` build config
-
-#### Build fails with Python errors
-
-**Cause**: Backend bundling issues
+**Symptoms**: PyInstaller errors, missing modules
 
 **Solutions**:
-1. Skip backend bundling for testing (use system Python)
-2. Check PyInstaller installation: `pip install pyinstaller`
-3. Review `backend/build-backend.spec` for missing dependencies
+1. Activate virtual environment: `.venv\Scripts\activate`
+2. Install dependencies: `pip install -r requirements_minimal.txt`
+3. Install PyInstaller: `pip install pyinstaller`
+4. Check `build-backend.spec` for missing hidden imports
+5. Try: `pyinstaller build-backend.spec --clean --log-level DEBUG`
 
-#### "out directory not found"
+#### Frontend build fails
 
-**Cause**: Frontend not built before Electron packaging
+**Symptoms**: Next.js build errors, missing dependencies
 
-**Solution**:
-```bash
-cd frontend
-npm run export
-```
+**Solutions**:
+1. Install dependencies: `npm install`
+2. Clear cache: `rm -rf .next out`
+3. Check Node.js version: `node --version` (should be 18+)
+4. Try: `npm run build:frontend` separately
+
+#### Electron Builder fails
+
+**Symptoms**: Packaging errors, missing files
+
+**Solutions**:
+1. Ensure backend built: Check `backend/dist/antariks-backend/`
+2. Ensure frontend built: Check `frontend/out/`
+3. Check disk space (need ~5GB)
+4. Try: `npm run pack` (without installer)
 
 ### Runtime Issues
 
-#### Application starts but shows blank screen
+#### Backend fails to start
 
-**Causes**:
-- Frontend not properly exported
-- Incorrect URL in production
+**Symptoms**: Error dialog on launch, blank window
 
 **Solutions**:
-1. Check Electron console for errors (enable DevTools)
-2. Verify `frontend/out/` exists and contains HTML files
-3. Rebuild frontend: `npm run export`
+1. Check port 8000 availability: `netstat -ano | findstr :8000`
+2. Check antivirus (may block `antariks-backend.exe`)
+3. Check Windows Firewall
+4. Run as administrator (if needed)
+5. Check logs: Look in app's DevTools console
 
-#### Backend API calls fail
+#### Frontend loads but API calls fail
 
-**Causes**:
-- Backend didn't start properly
-- CORS issues
-- API URL misconfigured
+**Symptoms**: Loading spinners, 404 errors, "Network Error"
 
 **Solutions**:
-1. Check if backend health endpoint responds: `curl http://127.0.0.1:8000/health`
-2. Check backend logs in Electron console
+1. Verify backend is running: Visit `http://127.0.0.1:8000/health`
+2. Check CORS configuration in `backend/app.py`
 3. Verify `NEXT_PUBLIC_API_URL` in `.env.production`
+4. Open DevTools and check Network tab
 
 #### Video processing fails
 
-**Cause**: FFmpeg not found
+**Symptoms**: Jobs fail, render errors
 
 **Solutions**:
-1. Install FFmpeg on the system
-2. For Windows distribution, bundle FFmpeg in `frontend/resources/ffmpeg/`
-3. Update backend to detect bundled FFmpeg
+1. Install FFmpeg on system
+2. Add FFmpeg to PATH
+3. For distribution, bundle FFmpeg in `frontend/resources/ffmpeg/`
+4. Update backend to detect bundled FFmpeg
 
-### Production Distribution Issues
+#### App won't close / Zombie processes
 
-#### Installer is very large (>500MB)
-
-**Causes**:
-- Electron runtime is large (~150MB)
-- Python dependencies add significant size
-- FFmpeg binaries (~100MB)
+**Symptoms**: Process remains in Task Manager after closing
 
 **Solutions**:
-- This is expected for Electron apps
-- Consider using installer compression
-- Split downloads (app + optional components)
+1. Check signal handlers in `backend/app.py`
+2. Check backend launcher cleanup in `backend-launcher.js`
+3. Kill manually: `taskkill /F /IM antariks-backend.exe`
+
+### Distribution Issues
+
+#### Large file size
+
+**Expected**: 500-800MB is normal for Electron + Python + ML models
+
+**To reduce**:
+- Remove unnecessary Python packages
+- Exclude test files
+- Use UPX compression (already enabled)
+- Consider on-demand model downloads
 
 #### Windows Defender blocks installer
 
 **Cause**: Unsigned executable
 
 **Solutions**:
-1. Code sign the application (requires certificate)
-2. Users can bypass SmartScreen warning
+1. Code sign the application (requires certificate ~$100-300/year)
+2. Users can bypass SmartScreen (right-click > "More info" > "Run anyway")
 3. Submit to Microsoft for reputation building
+4. Consider EV Code Signing for instant trust
 
-#### macOS "App is damaged" error
+#### Installer won't run
 
-**Cause**: Unsigned/unnotarized application
+**Symptoms**: Double-click does nothing, permission errors
 
 **Solutions**:
-1. Code sign and notarize the app (requires Apple Developer account)
-2. Users can bypass: Right-click > Open
-3. Or: `xattr -cr "Antariks Clipper.app"`
+1. Right-click > "Run as administrator"
+2. Check antivirus logs
+3. Try portable version: `npm run dist:win -- --portable`
+4. Disable antivirus temporarily for testing
 
-## Advanced Configuration
+## Advanced
+
+### Custom Icons
+
+Create icons in `frontend/build/`:
+- `icon.ico` - Windows (256x256)
+- `icon.icns` - macOS
+- `icon.png` - Linux (512x512)
+
+Use tools like:
+- https://icoconvert.com/
+- https://cloudconvert.com/png-to-ico
+- Photoshop / GIMP
+
+### Code Signing
+
+For production releases, get a code signing certificate:
+
+1. Purchase from CA (DigiCert, Sectigo, etc.)
+2. Install certificate
+3. Update `package.json`:
+```json
+{
+  "win": {
+    "certificateFile": "path/to/cert.pfx",
+    "certificatePassword": "password"
+  }
+}
+```
+4. Build: `npm run dist:win`
 
 ### Auto-Update
 
-To implement auto-updates, integrate `electron-updater`:
+Implement auto-updates using `electron-updater`:
 
 1. Install: `npm install electron-updater`
 2. Configure update server
 3. Add update checking to `main.js`
+4. Publish new releases
 
 See: https://www.electron.build/auto-update
-
-### System Tray
-
-Add system tray functionality:
-
-1. Import `Tray` from electron
-2. Create tray icon
-3. Add menu items (Show/Hide, Quit)
-
-### Custom Splash Screen
-
-Show loading screen while backend starts:
-
-1. Create splash window
-2. Show during backend initialization
-3. Close when main window is ready
 
 ## Resources
 
@@ -421,7 +436,15 @@ Show loading screen while backend starts:
 - [Electron Builder](https://www.electron.build/)
 - [PyInstaller Manual](https://pyinstaller.org/en/stable/)
 - [Next.js Static Export](https://nextjs.org/docs/app/building-your-application/deploying/static-exports)
+- [NSIS Documentation](https://nsis.sourceforge.io/Docs/)
+
+## Support
+
+For issues and questions:
+- GitHub Issues: https://github.com/jivimuz/antariks-clipper/issues
+- Documentation: https://github.com/jivimuz/antariks-clipper
+- Website: https://antariks.id
 
 ## License
 
-Same as main project (MIT)
+Same as main project
