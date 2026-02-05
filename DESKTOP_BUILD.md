@@ -15,7 +15,8 @@ This guide explains how to build and distribute Antariks Clipper as a standalone
 
 Antariks Clipper is packaged as an Electron desktop application that:
 - Automatically starts and stops the Python backend
-- Bundles the Next.js frontend as static files
+- Runs Next.js production server within Electron (not static export)
+- Supports dynamic routes and full Next.js features
 - Provides a native desktop experience
 - Supports Windows, macOS, and Linux
 
@@ -113,10 +114,10 @@ See `frontend/build/README.md` for icon creation instructions.
 
 ```bash
 cd frontend
-npm run export
+npm run build
 ```
 
-This creates a static export in `frontend/out/` directory.
+This creates a Next.js production build in `frontend/.next/` directory.
 
 ### 3. Build Desktop Application
 
@@ -128,8 +129,8 @@ npm run dist
 ```
 
 This will:
-1. Build the Next.js static export
-2. Package with Electron
+1. Build the Next.js production bundle
+2. Package with Electron (including Next.js server)
 3. Create an installer in `frontend/dist/`
 
 #### Build for Specific Platform

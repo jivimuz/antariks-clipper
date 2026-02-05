@@ -8,14 +8,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "export": "next build",
     "electron": "electron .",
     "electron-dev": "concurrently \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "pack": "npm run export && electron-builder --dir",
-    "dist": "npm run export && electron-builder",
-    "dist:win": "npm run export && electron-builder --win",
-    "dist:mac": "npm run export && electron-builder --mac",
-    "dist:linux": "npm run export && electron-builder --linux"
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "lucide-react": "^0.563.0",
@@ -49,10 +48,11 @@
       "buildResources": "build"
     },
     "files": [
-      "out/**/*",
+      ".next/**/*",
+      "public/**/*",
       "electron/**/*",
-      "!electron/backend-dist",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "package.json"
     ],
     "extraResources": [
       {
@@ -64,7 +64,9 @@
           "!data/**/*",
           "!__pycache__/**/*",
           "!*.pyc",
-          "!.env"
+          "!.env",
+          "!test_*.py",
+          "!*_test.py"
         ]
       },
       {

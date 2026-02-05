@@ -20,6 +20,8 @@ node_modules/
 /.next/
 /out/
 /build/
+frontend/.next/
+frontend/out/
 frontend/.env.local
 frontend/.env.development.local
 frontend/.env.test.local
