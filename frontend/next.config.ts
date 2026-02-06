@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   // Enable static HTML export only for production build (Electron packaging)
   output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   distDir: 'out',
-  assetPrefix: process.env.NODE_ENV === 'production' ? './' : undefined,
+  // assetPrefix: process.env.NODE_ENV === 'production' ? './' : undefined,
   images: {
     unoptimized: true,
   },
