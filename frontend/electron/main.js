@@ -1,10 +1,28 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, protocol, Menu, shell } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+const fs = require('fs');
+const isDev = !app.isPackaged;
 const BackendLauncher = require('./backend-launcher');
 
 let mainWindow = null;
 let backendLauncher = null;
+
+// Register custom protocol scheme BEFORE app.ready
+if (!isDev) {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: 'app',
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        bypassCSP: true,
+        stream: true
+      }
+    }
+  ]);
+}
 
 /**
  * Create the main application window
@@ -18,19 +36,112 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      webSecurity: isDev, // Disable web security in production for custom protocol
     },
     show: false, // Don't show until ready
     title: 'Antariks Clipper'
   });
 
+  // Create application menu
+  const menuTemplate = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Home',
+          accelerator: 'Ctrl+H',
+          click: () => {
+            const homeUrl = isDev ? 'http://localhost:3210/' : 'app://./index.html';
+            mainWindow.loadURL(homeUrl);
+          }
+        },
+        {
+          label: 'Back',
+          accelerator: 'Alt+Left',
+          click: () => {
+            if (mainWindow.webContents.canGoBack()) {
+              mainWindow.webContents.goBack();
+            }
+          }
+        },
+        {
+          label: 'Forward',
+          accelerator: 'Alt+Right',
+          click: () => {
+            if (mainWindow.webContents.canGoForward()) {
+              mainWindow.webContents.goForward();
+            }
+          }
+        },
+        {
+          label: 'Refresh',
+          accelerator: 'F5',
+          click: () => {
+            mainWindow.webContents.reload();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          accelerator: 'Alt+F4',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Toggle DevTools',
+          accelerator: 'F12',
+          click: () => {
+            mainWindow.webContents.toggleDevTools();
+          }
+        },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Documentation',
+          click: async () => {
+            await shell.openExternal('https://github.com/your-repo/antariks-clipper#readme');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'About',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About Antariks Clipper',
+              message: 'Antariks Clipper',
+              detail: `Version: ${app.getVersion()}\n\nVideo clipping and rendering application.`
+            });
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+
   // Load the app
   let startUrl;
   if (isDev) {
     // Development: load from Next.js dev server
-    startUrl = 'http://localhost:3000';
+    startUrl = 'http://localhost:3210';
   } else {
-    // Production: load from static HTML export
-    startUrl = `file://${path.join(__dirname, '../out/index.html')}`;
+    // Production: load from custom app:// protocol
+    startUrl = 'app://./index.html';
   }
 
   console.log('Loading URL:', startUrl);
@@ -41,15 +152,124 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Open DevTools in development
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+  // Open DevTools in development AND production (for debugging)
+  // TODO: Remove this line after fixing issues
+  mainWindow.webContents.openDevTools();
+
+  // Prevent navigation to unexpected URLs
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentURL = mainWindow.webContents.getURL();
+    
+    if (!isDev) {
+      // Production: allow app:// navigation (same origin)
+      if (!url.startsWith('app://')) {
+        event.preventDefault();
+        console.log('Blocked external navigation to:', url);
+      }
+      return;
+    }
+
+    // Development: only allow localhost navigation
+    if (isDev && !url.startsWith('http://localhost:3210')) {
+      event.preventDefault();
+      console.log('Blocked navigation to:', url);
+    }
+  });
+
+  // Handle new window requests
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Block all new windows
+    console.log('Blocked new window to:', url);
+    return { action: 'deny' };
+  });
 
   // Cleanup on close
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+/**
+ * Create loading splash window
+ */
+function createSplashWindow() {
+  const splash = new BrowserWindow({
+    width: 400,
+    height: 300,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    center: true,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  // Simple loading HTML
+  splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #fff;
+          }
+          .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #10b981, #14b8a6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+          .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #10b981;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .status {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-top: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="logo">Antariks Clipper</div>
+          <div class="spinner"></div>
+          <div class="status">Starting server...</div>
+        </div>
+      </body>
+    </html>
+  `)}`);
+
+  return splash;
 }
 
 /**
@@ -61,30 +281,89 @@ async function initialize() {
   console.log('Development mode:', isDev);
   console.log('Resources path:', process.resourcesPath);
 
-  // Start backend
+  if (!isDev) {
+    const outDir = path.join(__dirname, '../out');
+    protocol.registerFileProtocol('app', (request, callback) => {
+      try {
+        const parsedUrl = new URL(request.url);
+        const hostPart = parsedUrl.hostname && parsedUrl.hostname !== '.' ? parsedUrl.hostname : '';
+        let pathPart = decodeURIComponent(parsedUrl.pathname || '');
+
+        // Normalize leading slashes and "./"
+        pathPart = pathPart.replace(/^\/+/, '').replace(/^\.\//, '');
+
+        let relativePath = hostPart ? path.join(hostPart, pathPart) : pathPart;
+
+        if (relativePath === '' || relativePath.endsWith('/')) {
+          relativePath = path.join(relativePath, 'index.html');
+        } else if (!path.extname(relativePath)) {
+          const htmlCandidate = path.join(outDir, `${relativePath}.html`);
+          if (fs.existsSync(htmlCandidate)) {
+            relativePath = `${relativePath}.html`;
+          } else {
+            relativePath = path.join(relativePath, 'index.html');
+          }
+        }
+
+        const resolvedPath = path.join(outDir, relativePath);
+        if (!fs.existsSync(resolvedPath)) {
+          console.warn('Protocol missing file:', request.url, '->', resolvedPath);
+        }
+        callback({ path: resolvedPath });
+      } catch (error) {
+        console.error('Protocol resolve error:', error);
+        callback({ path: path.join(outDir, 'index.html') });
+      }
+    });
+  }
+
+  // Show loading splash window
+  const splash = createSplashWindow();
+
+  // Start backend FIRST
   backendLauncher = new BackendLauncher();
   
   try {
     const backendStarted = await backendLauncher.start();
     
     if (!backendStarted) {
+      console.error('⚠️ Backend failed to start - some features will be unavailable');
+      
+      // Close splash
+      splash.close();
+      
       const { response } = await dialog.showMessageBox({
-        type: 'error',
-        title: 'Backend Error',
-        message: 'Failed to start the backend server',
-        detail: 'Please check if Python is installed and all dependencies are available.',
-        buttons: ['OK', 'Quit'],
-        defaultId: 1,
+        type: 'warning',
+        title: 'Backend Warning',
+        message: 'Backend server could not start',
+        detail: 'The application will run with limited functionality. Transcription and rendering features may not work.\n\nMake sure Python and all dependencies are installed:\ncd backend\npip install -r requirements_minimal.txt',
+        buttons: ['Continue Anyway', 'Quit'],
+        defaultId: 0,
       });
       
       if (response === 1) {
         app.quit();
         return;
       }
+    } else {
+      console.log('✓ Backend started successfully');
+    }
+
+    // Backend ready, now create main window
+    createWindow();
+    
+    // Close splash after window is ready
+    if (mainWindow) {
+      mainWindow.once('ready-to-show', () => {
+        setTimeout(() => {
+          splash.close();
+        }, 500);
+      });
+    } else {
+      splash.close();
     }
     
-    // Create window after backend is ready
-    createWindow();
+    // Backend ready
   } catch (error) {
     console.error('Failed to initialize:', error);
     

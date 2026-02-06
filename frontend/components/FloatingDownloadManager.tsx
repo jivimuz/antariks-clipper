@@ -1,7 +1,7 @@
 'use client';
 
 import { useDownloads } from '@/contexts/DownloadContext';
-import { Download, X, CheckCircle, Loader2, AlertCircle, Minimize2, Maximize2, Trash2, FileText } from 'lucide-react';
+import { Download, X, CheckCircle, Loader2, AlertCircle, Minimize2, Maximize2, Trash2, FileText, Share2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '@/lib/api';
 import { toast } from 'react-hot-toast';
@@ -70,6 +70,51 @@ export default function FloatingDownloadManager() {
 
   const handleDownloadSavedFile = (file: RenderFile) => {
     window.open(`${API_URL}/api/renders/${file.id}/download`, '_blank');
+  };
+
+  const sanitizeFilename = (name: string) =>
+    name.replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'clip';
+
+  const shareVideoFile = async (url: string, filename: string, title: string) => {
+    try {
+      if (!navigator.share || !navigator.canShare) {
+        toast.error('Share video tidak didukung di perangkat ini');
+        return;
+      }
+
+      const res = await fetch(url);
+      if (!res.ok) {
+        toast.error('Gagal menyiapkan video untuk dibagikan');
+        return;
+      }
+
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+
+      if (!navigator.canShare({ files: [file] })) {
+        toast.error('Share video tidak didukung di perangkat ini');
+        return;
+      }
+
+      await navigator.share({ title, files: [file] });
+      toast.success('Video dibagikan');
+    } catch (error) {
+      console.error('Share error:', error);
+      toast.error('Gagal membagikan video');
+    }
+  };
+
+  const handleShare = (item: any) => {
+    if (!item.downloadUrl) return;
+    const url = `${API_URL}${item.downloadUrl}`;
+    const filename = `${sanitizeFilename(item.clipTitle || 'clip')}.mp4`;
+    shareVideoFile(url, filename, item.clipTitle || 'Clip');
+  };
+
+  const handleShareSavedFile = (file: RenderFile) => {
+    const url = `${API_URL}/api/renders/${file.id}/download`;
+    const filename = sanitizeFilename(file.filename || file.clipTitle || 'clip.mp4');
+    shareVideoFile(url, filename, file.clipTitle || 'Clip');
   };
 
   const handleDeleteSavedFile = async (file: RenderFile) => {
@@ -180,7 +225,7 @@ export default function FloatingDownloadManager() {
       <button
         onClick={() => setIsHidden(false)}
         className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-2xl z-50 transition-all duration-300"
-        title="Tampilkan Download Manager"
+        title="Tampilkan Clip Manager"
       >
         <Download className="w-6 h-6" />
         {activeDownloads.length > 0 && (
@@ -199,7 +244,7 @@ export default function FloatingDownloadManager() {
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Download className="w-5 h-5" />
-          <h3 className="font-semibold">Download Manager</h3>
+          <h3 className="font-semibold">Clip Manager</h3>
           {activeDownloads.length > 0 && (
             <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
               {activeDownloads.length} aktif
@@ -330,6 +375,15 @@ export default function FloatingDownloadManager() {
                               <Download className="w-4 h-4" />
                             </button>
                           )}
+                          {(item.status === 'ready' || item.status === 'completed') && item.downloadUrl && (
+                            <button
+                              onClick={() => handleShare(item)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded transition-colors"
+                              title="Share"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleRemoveClick(item.renderId, item.clipTitle, item.status)}
                             className="hover:bg-gray-200 dark:hover:bg-gray-600 p-2 rounded transition-colors text-gray-600 dark:text-gray-300"
@@ -392,6 +446,13 @@ export default function FloatingDownloadManager() {
                             title="Download"
                           >
                             <Download className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleShareSavedFile(file)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded transition-colors"
+                            title="Share"
+                          >
+                            <Share2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteSavedFile(file)}

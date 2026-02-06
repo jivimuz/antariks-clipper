@@ -18,6 +18,7 @@ Backend API untuk Antariks Clipper menggunakan FastAPI.
    - **Linux**: `sudo apt-get install ffmpeg` atau `sudo yum install ffmpeg`
 
 2. Create virtual environment:
+
 ```bash
 python -m venv .venv
 ```
@@ -27,6 +28,7 @@ python -m venv .venv
    - **macOS/Linux**: `source .venv/bin/activate`
 
 4. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -36,26 +38,29 @@ pip install -r requirements.txt
 ## Running
 
 ```bash
-uvicorn app:app --reload --port 8000
+uvicorn app:app --reload --port 3211
 ```
 
-API akan tersedia di http://localhost:8000
+API akan tersedia di http://localhost:3211
 
 ## API Documentation
 
 Setelah server berjalan, buka:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+
+- Swagger UI: http://localhost:3211/docs
+- ReDoc: http://localhost:3211/redoc
 
 ## Endpoints
 
 ### Jobs
+
 - `POST /api/jobs` - Create job (YouTube or upload)
 - `GET /api/jobs` - List all jobs
 - `GET /api/jobs/{job_id}` - Get job details
 - `GET /api/jobs/{job_id}/clips` - Get job clips
 
 ### Clips & Renders
+
 - `POST /api/clips/{clip_id}/render` - Create render
 - `GET /api/renders/{render_id}` - Get render status
 - `GET /api/renders/{render_id}/download` - Download rendered video
@@ -64,6 +69,7 @@ Setelah server berjalan, buka:
 ## Data Storage
 
 All data is stored in `backend/data/`:
+
 - `raw/` - Downloaded/uploaded videos
 - `normalized/` - Normalized videos
 - `transcripts/` - Transcription JSON files

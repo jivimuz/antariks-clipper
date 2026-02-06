@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { Youtube, Upload, Sparkles, ArrowRight, AlertCircle, Loader2, Film, CheckCircle2, Shield, CreditCard } from 'lucide-react';
 import { getApiEndpoint } from '@/lib/api';
@@ -162,13 +163,13 @@ export default function Home() {
 
         {/* User Menu (Top Right) */}
         <div className="pointer-events-auto relative">
-          <a
+          <Link
             href="/license"
             className="flex items-center gap-2 px-4 py-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700/50 rounded-full text-xs font-medium text-slate-300 transition-all hover:text-white"
           >
             <CreditCard size={14} />
             License Settings
-          </a>
+          </Link>
         </div>
       </nav>
 

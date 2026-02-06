@@ -35,7 +35,11 @@ pip install --upgrade pyinstaller
 
 # Install dependencies if not already installed
 echo "Installing dependencies..."
-pip install -r requirements_minimal.txt 2>/dev/null || echo "Some dependencies may already be installed"
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+else
+    pip install -r requirements_minimal.txt 2>/dev/null || echo "Some dependencies may already be installed"
+fi
 
 # Clean previous builds
 echo "Cleaning previous builds..."

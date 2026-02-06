@@ -1,9 +1,11 @@
 
 from pathlib import Path
 import subprocess
+import sys
 import logging
 from typing import Optional, Tuple
 import json
+from utils import get_subprocess_startup_info, get_subprocess_creation_flags
 
 def add_watermark(input_path: Path, output_path: Path, text: str) -> bool:
     """Add watermark text to video using ffmpeg drawtext"""
@@ -14,7 +16,14 @@ def add_watermark(input_path: Path, output_path: Path, text: str) -> bool:
             '-vf', f"drawtext=text='{text}':fontcolor=white:fontsize=36:x=w-tw-20:y=h-th-20:box=1:boxcolor=black@0.5:boxborderw=5",
             '-c:a', 'copy', str(output_path)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=300,
+            startupinfo=get_subprocess_startup_info(),
+            creationflags=get_subprocess_creation_flags()
+        )
         if result.returncode == 0:
             return True
         logger.error(f"Add watermark error: {result.stderr}")
@@ -35,7 +44,7 @@ def get_video_info(video_path: Path) -> Optional[dict]:
             '-of', 'json',
             str(video_path)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         if result.returncode == 0:
             data = json.loads(result.stdout)
             if data.get('streams'):
@@ -55,7 +64,7 @@ def get_audio_info(video_path: Path) -> Optional[dict]:
             '-of', 'json',
             str(video_path)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         if result.returncode == 0:
             data = json.loads(result.stdout)
             if data.get('streams'):
@@ -109,7 +118,7 @@ def normalize_video(input_path: Path, output_path: Path) -> bool:
             ]
         
         logger.info(f"Normalize timeout: {timeout}s for {duration if duration else 'unknown'}s video")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         
         if result.returncode != 0:
             logger.error(f"FFmpeg normalize error: {result.stderr}")
@@ -127,7 +136,7 @@ def normalize_video(input_path: Path, output_path: Path) -> bool:
                 '-y',
                 str(output_path)
             ]
-            result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
             if result.returncode != 0:
                 logger.error(f"FFmpeg fallback error: {result.stderr}")
                 return False
@@ -152,7 +161,7 @@ def get_video_duration(video_path: Path) -> Optional[float]:
             str(video_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         if result.returncode == 0:
             data = json.loads(result.stdout)
             return float(data['format']['duration'])
@@ -174,7 +183,7 @@ def extract_thumbnail(video_path: Path, timestamp: float, output_path: Path) -> 
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -198,7 +207,7 @@ def extract_segment(input_path: Path, output_path: Path, start: float, duration:
         ]
         
         timeout = max(int(duration * 2), 60)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -220,7 +229,7 @@ def extract_audio(video_path: Path, output_path: Path, start: float, duration: f
         ]
         
         timeout = max(int(duration * 2), 60)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -251,7 +260,7 @@ def crop_and_scale_center(input_path: Path, output_path: Path, width: int, heigh
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -312,7 +321,7 @@ def mux_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> bo
         
         duration = get_video_duration(video_path) or 60
         timeout = max(int(duration * 2), 120)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:
@@ -344,7 +353,7 @@ def burn_subtitles(video_path: Path, srt_path: Path, output_path: Path) -> bool:
             str(output_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         return result.returncode == 0 and output_path.exists()
         
     except Exception as e:

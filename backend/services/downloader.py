@@ -3,10 +3,12 @@ import subprocess
 import logging
 import shutil
 import os
+import sys
 import re
 import time
 from pathlib import Path
 from typing import Optional, Tuple, Callable
+from utils import get_subprocess_startup_info, get_subprocess_creation_flags
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,14 @@ def check_dependencies() -> Tuple[bool, list, dict]:
         logger.warning("ffmpeg not found. Install with: sudo apt-get install ffmpeg (Linux) or brew install ffmpeg (macOS)")
     else:
         try:
-            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ['ffmpeg', '-version'], 
+                capture_output=True, 
+                text=True, 
+                timeout=10,
+                startupinfo=get_subprocess_startup_info(),
+                creationflags=get_subprocess_creation_flags()
+            )
             match = re.search(r'ffmpeg version (\S+)', result.stdout)
             versions['ffmpeg'] = match.group(1) if match else 'unknown'
             logger.debug(f"ffmpeg version: {versions['ffmpeg']}")
@@ -47,13 +56,32 @@ def check_dependencies() -> Tuple[bool, list, dict]:
             logger.debug(f"Could not get ffmpeg version: {e}")
             versions['ffmpeg'] = 'unknown'
     
-    # Check yt-dlp
-    if not shutil.which('yt-dlp'):
+    # Check yt-dlp - try both PATH and Python scripts directory
+    ytdlp_cmd = shutil.which('yt-dlp')
+    
+    # Fallback: try finding in Python scripts directory
+    if not ytdlp_cmd and sys.platform == 'win32':
+        import site
+        scripts_dir = site.USER_BASE + '\\Scripts' if hasattr(site, 'USER_BASE') else None
+        if scripts_dir:
+            ytdlp_exe = Path(scripts_dir) / 'yt-dlp.exe'
+            if ytdlp_exe.exists():
+                ytdlp_cmd = str(ytdlp_exe)
+                logger.info(f"Found yt-dlp in Python scripts: {ytdlp_cmd}")
+    
+    if not ytdlp_cmd:
         missing.append('yt-dlp')
         logger.warning("yt-dlp not found. Install with: pip install yt-dlp")
     else:
         try:
-            result = subprocess.run(['yt-dlp', '--version'], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                [ytdlp_cmd, '--version'], 
+                capture_output=True, 
+                text=True, 
+                timeout=10,
+                startupinfo=get_subprocess_startup_info(),
+                creationflags=get_subprocess_creation_flags()
+            )
             versions['yt-dlp'] = result.stdout.strip()
             logger.debug(f"yt-dlp version: {versions['yt-dlp']}")
             
@@ -476,7 +504,9 @@ def _attempt_download(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1
+            bufsize=1,
+            startupinfo=get_subprocess_startup_info(),
+            creationflags=get_subprocess_creation_flags()
         )
         
         last_percent = 0

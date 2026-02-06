@@ -1,9 +1,11 @@
 /**
  * Get the API URL from environment variables
- * @returns The API URL (defaults to http://localhost:8000 if not set)
+ * @returns The API URL (defaults to http://localhost:3211 if not set)
  */
 export function getApiUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3211';
+  console.log('[API] Using API URL:', apiUrl);
+  return apiUrl;
 }
 
 /**

@@ -5,7 +5,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict, Any, List
-from faster_whisper import WhisperModel
+from utils import get_subprocess_startup_info, get_subprocess_creation_flags
+
+# Try importing faster-whisper, provide fallback if not available
+try:
+    from faster_whisper import WhisperModel
+    FASTER_WHISPER_AVAILABLE = True
+except ImportError:
+    FASTER_WHISPER_AVAILABLE = False
+    WhisperModel = None
+    
 from config import WHISPER_MODEL
 from services.ffmpeg import get_audio_info
 
@@ -17,6 +26,13 @@ _model = None
 def get_model():
     """Get or create Whisper model instance"""
     global _model
+    
+    if not FASTER_WHISPER_AVAILABLE:
+        raise ImportError(
+            "faster-whisper is not installed. "
+            "Please install it: pip install faster-whisper"
+        )
+    
     if _model is None:
         logger.info(f"Loading Whisper model: {WHISPER_MODEL}")
         _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
@@ -100,7 +116,7 @@ def _extract_audio_wav(video_path: Path, output_path: Path) -> bool:
             str(output_path)
         ]
         # Increase timeout to 30 minutes for large files
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         if result.returncode != 0:
             logger.error(f"Extract audio failed: {result.stderr}")
             return False

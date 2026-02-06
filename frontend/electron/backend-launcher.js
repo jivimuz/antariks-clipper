@@ -1,30 +1,31 @@
 const { spawn } = require('child_process');
+const { app } = require('electron');
 const path = require('path');
 const http = require('http');
-const isDev = require('electron-is-dev');
+const isDev = !app.isPackaged;
 
 class BackendLauncher {
   constructor() {
     this.backendProcess = null;
-    this.port = 8000;
+    this.port = 3211;
     this.maxRetries = 30;
     this.retryDelay = 1000;
+    console.log('[BackendLauncher] Initialized with port:', this.port);
   }
 
   /**
    * Get the Python executable path
    * In development: use system Python
-   * In production: use bundled PyInstaller exe
+   * In production: use bundled PyInstaller exe (or fallback to system Python)
    */
   getPythonPath() {
     if (isDev) {
       // Development: use system Python
       return process.platform === 'win32' ? 'python' : 'python3';
-    } else {
-      // Production: use bundled backend executable
-      const exeName = process.platform === 'win32' ? 'antariks-backend.exe' : 'antariks-backend';
-      return path.join(process.resourcesPath, 'backend', exeName);
     }
+    // Production: use bundled backend executable
+    const exeName = process.platform === 'win32' ? 'antariks-backend.exe' : 'antariks-backend';
+    return path.join(process.resourcesPath, 'backend', exeName);
   }
 
   /**
@@ -34,10 +35,9 @@ class BackendLauncher {
     if (isDev) {
       // Development: use backend directory relative to project root
       return path.join(__dirname, '..', '..', 'backend');
-    } else {
-      // Production: use bundled backend directory
-      return path.join(process.resourcesPath, 'backend');
     }
+    // Production: use bundled backend directory
+    return path.join(process.resourcesPath, 'backend');
   }
 
   /**
@@ -64,17 +64,17 @@ class BackendLauncher {
    * Wait for backend to be ready
    */
   async waitForBackend() {
-    console.log('Waiting for backend to be ready...');
+    console.log(`[BackendLauncher] Waiting for backend on port ${this.port}...`);
     
     for (let i = 0; i < this.maxRetries; i++) {
       const isHealthy = await this.checkHealth();
       
       if (isHealthy) {
-        console.log('✓ Backend is ready!');
+        console.log(`[BackendLauncher] ✓ Backend is ready on port ${this.port}!`);
         return true;
       }
       
-      console.log(`Waiting for backend... (${i + 1}/${this.maxRetries})`);
+      console.log(`[BackendLauncher] Waiting for backend... (${i + 1}/${this.maxRetries})`);
       await new Promise(resolve => setTimeout(resolve, this.retryDelay));
     }
     

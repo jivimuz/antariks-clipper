@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_all
+
 block_cipher = None
 
 # Hidden imports for all required modules
@@ -35,6 +37,9 @@ hidden_imports = [
     'yt_dlp',
     'yt_dlp.extractor',
     'yt_dlp.downloader',
+    'boto3',
+    'botocore',
+    'botocore.exceptions',
     'sqlite3',
     'json',
     'pathlib',
@@ -43,14 +48,34 @@ hidden_imports = [
     'subprocess',
 ]
 
+datas = [
+    ('.env.example', '.'),
+    ('services', 'services'),
+]
+
+binaries = []
+
+for pkg in [
+    'faster_whisper',
+    'ctranslate2',
+    'tokenizers',
+    'mediapipe',
+    'cv2',
+    'numpy',
+    'yt_dlp',
+    'boto3',
+    'botocore',
+]:
+    pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
+    datas += pkg_datas
+    binaries += pkg_binaries
+    hidden_imports += pkg_hidden
+
 a = Analysis(
-    ['app.py'],
+    ['run_backend.py'],
     pathex=[],
-    binaries=[],
-    datas=[
-        ('.env.example', '.'),
-        ('services', 'services'),
-    ],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
@@ -60,6 +85,9 @@ a = Analysis(
         'test_*',
         'tests',
         '__pycache__',
+        'torch',
+        'torchvision',
+        'torchaudio',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

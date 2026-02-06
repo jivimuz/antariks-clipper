@@ -252,7 +252,6 @@ export default function JobsPage() {
                       
                       {/* Icon & Source Info */}
                       <a
-                        href={`/jobs/${job.id}`}
                         className="flex-1 min-w-0 group"
                       >
                         <div className="flex items-start gap-4">
@@ -310,15 +309,18 @@ export default function JobsPage() {
                             </div>
                           </div>
                          ) : job.status === 'ready' ? (
-                           <a 
-                             href={`/jobs/${job.id}`}
+                           <button
+                            onClick={() => {
+                              localStorage.setItem('selectedJobId', job.id);
+                              window.location.href = '/jobs/detail';
+                            }}
                              className="flex items-center justify-end gap-2 text-emerald-400 text-sm font-medium hover:text-emerald-300 transition-colors"
                            >
                               <span>View Clips</span>
                               <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-colors">
                                   <ChevronRight size={16} />
                               </div>
-                           </a>
+                           </button>
                          ) : null}
                          
                          {/* Cancel Button - Only for processing jobs */}

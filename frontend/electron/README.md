@@ -77,12 +77,14 @@ Provides secure communication between renderer and main process:
 ### Development vs Production
 
 **Development Mode** (`isDev = true`):
+
 - Uses system Python and Node.js
 - Assumes Next.js dev server running externally
 - Hot-reload enabled
 - DevTools open by default
 
 **Production Mode** (`isDev = false`):
+
 - Uses bundled backend and frontend
 - Starts Next.js production server internally
 - Optimized builds
@@ -91,23 +93,25 @@ Provides secure communication between renderer and main process:
 ### Server Lifecycle
 
 1. **Startup sequence**:
+
    ```
-   App Ready → Backend Start → Backend Health Check → 
+   App Ready → Backend Start → Backend Health Check →
    Next.js Start (prod) → Create Window → Load URL
    ```
 
 2. **Shutdown sequence**:
    ```
-   Window Close → Cleanup → Stop Backend → 
+   Window Close → Cleanup → Stop Backend →
    Stop Next.js (prod) → App Quit
    ```
 
 ### Port Configuration
 
-- **Backend**: Port 8000 (configurable in `backend-launcher.js`)
-- **Frontend**: Port 3000 (hardcoded in `main.js`)
+- **Backend**: Port 3211 (configurable in `backend-launcher.js`)
+- **Frontend**: Port 3210 (hardcoded in `main.js`)
 
 To change ports:
+
 1. Update `backend-launcher.js` for backend port
 2. Update `main.js` for Next.js port
 3. Update `.env.production` for API URL
@@ -119,21 +123,24 @@ To change ports:
 To add new IPC channels:
 
 1. **In preload.js**, add to whitelist:
+
 ```javascript
-contextBridge.exposeInMainWorld('electron', {
-  myFunction: (data) => ipcRenderer.invoke('my-channel', data)
+contextBridge.exposeInMainWorld("electron", {
+  myFunction: (data) => ipcRenderer.invoke("my-channel", data),
 });
 ```
 
 2. **In main.js**, handle the channel:
+
 ```javascript
-ipcMain.handle('my-channel', async (event, data) => {
+ipcMain.handle("my-channel", async (event, data) => {
   // Handle the request
   return result;
 });
 ```
 
 3. **In renderer**, use the exposed API:
+
 ```javascript
 const result = await window.electron.myFunction(data);
 ```
@@ -142,12 +149,13 @@ const result = await window.electron.myFunction(data);
 
 1. Import `Tray` in `main.js`
 2. Create tray icon in `initialize()`:
+
 ```javascript
-const { Tray, Menu } = require('electron');
-let tray = new Tray('path/to/icon.png');
+const { Tray, Menu } = require("electron");
+let tray = new Tray("path/to/icon.png");
 const contextMenu = Menu.buildFromTemplate([
-  { label: 'Show App', click: () => mainWindow.show() },
-  { label: 'Quit', click: () => app.quit() }
+  { label: "Show App", click: () => mainWindow.show() },
+  { label: "Quit", click: () => app.quit() },
 ]);
 tray.setContextMenu(contextMenu);
 ```
@@ -155,17 +163,20 @@ tray.setContextMenu(contextMenu);
 ### Adding Auto-Update
 
 1. Install `electron-updater`:
+
 ```bash
 npm install electron-updater
 ```
 
 2. Configure in `main.js`:
+
 ```javascript
-const { autoUpdater } = require('electron-updater');
+const { autoUpdater } = require("electron-updater");
 autoUpdater.checkForUpdatesAndNotify();
 ```
 
 3. Add update configuration to `package.json`:
+
 ```json
 "publish": {
   "provider": "github",

@@ -8,6 +8,7 @@ import tempfile
 import subprocess
 from services.face_track import detect_faces_sample
 from config import PREVIEW_WIDTH, PREVIEW_HEIGHT, PREVIEW_SAMPLE_FRAMES
+from utils import get_subprocess_startup_info, get_subprocess_creation_flags
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def generate_preview_stream(
             '-of', 'csv=p=0',
             str(video_path)
         ]
-        result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         width, height = map(int, result.stdout.strip().split(','))
         
         # Calculate crop for 9:16 from source
@@ -134,7 +135,7 @@ def generate_preview_stream(
             str(preview_path)
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, startupinfo=get_subprocess_startup_info(), creationflags=get_subprocess_creation_flags())
         
         if result.returncode != 0:
             logger.error(f"Preview generation failed: {result.stderr}")

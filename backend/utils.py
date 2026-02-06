@@ -1,11 +1,37 @@
 """Utility functions for common operations"""
 import logging
 import os
+import sys
+import subprocess
 from pathlib import Path
 from typing import Optional, List
 import json
 
 logger = logging.getLogger(__name__)
+
+
+def get_subprocess_startup_info():
+    """
+    Get startup info to hide console window on Windows.
+    Returns None on non-Windows platforms.
+    """
+    if sys.platform == 'win32':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        return startupinfo
+    return None
+
+
+def get_subprocess_creation_flags():
+    """
+    Get creation flags to hide console window on Windows.
+    Returns 0 on non-Windows platforms.
+    """
+    if sys.platform == 'win32':
+        # CREATE_NO_WINDOW = 0x08000000
+        return 0x08000000
+    return 0
 
 
 def log_action(user: Optional[str], action: str, message: str) -> None:

@@ -306,6 +306,19 @@ export default function LicensePage() {
             ← Back to Home
           </button>
         </div>
+
+        {/* Legal Footer */}
+        <div className="mt-4 text-center text-xs text-slate-500">
+          © 2026 PT Antariks Global Technology • Developed by Jivi Muzaqi Guntur •{' '}
+          <a
+            href="https://antariks.id"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-emerald-400 hover:text-emerald-300"
+          >
+            antariks.id
+          </a>
+        </div>
       </div>
     </div>
   );
