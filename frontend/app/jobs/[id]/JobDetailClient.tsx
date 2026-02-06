@@ -119,6 +119,7 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
   const [previewClipId, setPreviewClipId] = useState<string | null>(null);
   const [previewLoadedByClipId, setPreviewLoadedByClipId] = useState<Record<string, boolean>>({});
+  const [previewError, setPreviewError] = useState<Record<string, string>>({});
   const [faceTracking, setFaceTracking] = useState(true);
   const [smartCrop, setSmartCrop] = useState(false);
   const [captions, setCaptions] = useState(false);
@@ -893,10 +894,22 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
                              autoPlay
                              className="w-full h-full object-cover"
                              onLoadedData={() => {
+                               console.log('[Preview] Video loaded successfully:', previewClipId);
                                setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: true }));
+                               setPreviewError(prev => {
+                                 const newErrors = { ...prev };
+                                 delete newErrors[previewClipId];
+                                 return newErrors;
+                               });
                              }}
-                             onError={() => {
+                             onError={(e) => {
+                               console.error('[Preview] Video error for clip:', previewClipId);
+                               console.error('[Preview] Video source:', `${API_URL}/api/clips/${previewClipId}/preview?face_tracking=${faceTracking}`);
                                setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: false }));
+                               setPreviewError(prev => ({ 
+                                 ...prev, 
+                                 [previewClipId]: 'Failed to load video preview' 
+                               }));
                              }}
                            >
                              <source
@@ -905,6 +918,39 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
                              />
                              Your browser does not support the video tag.
                            </video>
+                           
+                           {/* Error Overlay */}
+                           {previewError[previewClipId] && (
+                             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
+                               <div className="text-center p-6">
+                                 <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                                 <p className="text-red-400 font-medium mb-2">Video Preview Error</p>
+                                 <p className="text-slate-400 text-sm mb-4">{previewError[previewClipId]}</p>
+                                 <button 
+                                   onClick={() => {
+                                     setPreviewError(prev => {
+                                       const newErrors = { ...prev };
+                                       delete newErrors[previewClipId];
+                                       return newErrors;
+                                     });
+                                   }}
+                                   className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm transition-colors"
+                                 >
+                                   Retry
+                                 </button>
+                               </div>
+                             </div>
+                           )}
+                           
+                           {/* Loading State */}
+                           {!previewLoadedByClipId[previewClipId] && !previewError[previewClipId] && (
+                             <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+                               <div className="text-center">
+                                 <Loader2 className="w-12 h-12 text-blue-400 mx-auto mb-4 animate-spin" />
+                                 <p className="text-slate-400 text-sm">Loading preview...</p>
+                               </div>
+                             </div>
+                           )}
                         </div>
                       </div>
 
@@ -1446,7 +1492,13 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
                     <img 
                       src={`${API_URL}/api/clips/${clip.id}/preview-frame?face_tracking=${faceTracking}`}
                       alt={clip.title}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100" 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100"
+                      onError={(e) => {
+                        console.error('[Thumbnail] Load error for clip:', clip.id);
+                        console.error('[Thumbnail] Source:', `${API_URL}/api/clips/${clip.id}/preview-frame?face_tracking=${faceTracking}`);
+                        // Set fallback placeholder
+                        e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23334155" width="100" height="100"/%3E%3Ctext fill="%239ca3af" font-size="12" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Preview%3C/text%3E%3C/svg%3E';
+                      }}
                     />
                     
                     {/* Gradient Overlay */}
