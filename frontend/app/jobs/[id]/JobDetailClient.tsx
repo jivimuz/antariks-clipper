@@ -62,19 +62,14 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
   const [jobId, setJobId] = useState<string | null>(propJobId || null);
   
   useEffect(() => {
-    console.log('[JobDetail] Props jobId:', propJobId);
-    console.log('[JobDetail] Params:', params);
-    
     // Priority 1: Direct prop
     if (propJobId) {
-      console.log('[JobDetail] Using propJobId:', propJobId);
       setJobId(propJobId);
       return;
     }
     
     // Priority 2: Params from Next.js
     if (params?.id && params.id !== 'placeholder') {
-      console.log('[JobDetail] Using params.id:', params.id);
       setJobId(params.id);
       return;
     }
@@ -82,7 +77,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
     // Priority 3: Extract from pathname
     const pathMatch = window.location.pathname.match(/\/jobs\/([^/?]+)/);
     if (pathMatch && pathMatch[1] && pathMatch[1] !== 'placeholder') {
-      console.log('[JobDetail] Extracted from path:', pathMatch[1]);
       setJobId(pathMatch[1]);
       return;
     }
@@ -91,7 +85,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
     const urlParams = new URLSearchParams(window.location.search);
     const jobIdFromQuery = urlParams.get('jobId');
     if (jobIdFromQuery) {
-      console.log('[JobDetail] Extracted from query:', jobIdFromQuery);
       setJobId(jobIdFromQuery);
       return;
     }
@@ -111,8 +104,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
     );
   }
   
-  console.log('[JobDetail] Final jobId:', jobId);
-  console.log('[JobDetail] API URL:', API_URL);
   
   const [job, setJob] = useState<Job | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
@@ -268,7 +259,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
   useEffect(() => {
     const fetchJob = async () => {
       try {
-        console.log('[JobDetail] Fetching job:', jobId);
         const res = await fetch(`${API_URL}/api/jobs/${jobId}`);
         
         if (!res.ok) {
@@ -279,7 +269,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
         }
         
         const data = await res.json();
-        console.log('[JobDetail] Job data:', data);
         setJob(data);
         setError(null);
         setLoading(false);
@@ -449,7 +438,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
             if (autoDownload && render.output_path) {
               setTimeout(() => {
                 const downloadUrl = `${API_URL}/api/renders/${renderId}/download`;
-                console.log('Auto-downloading:', downloadUrl);
                 toast.success('Starting download...');
                 window.open(downloadUrl, '_blank');
                 
@@ -894,7 +882,6 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
                              autoPlay
                              className="w-full h-full object-cover"
                              onLoadedData={() => {
-                               console.log('[Preview] Video loaded successfully:', previewClipId);
                                setPreviewLoadedByClipId(prev => ({ ...prev, [previewClipId]: true }));
                                setPreviewError(prev => {
                                  const newErrors = { ...prev };
@@ -1137,10 +1124,11 @@ export default function JobDetailPage({ jobId: propJobId, params }: JobDetailCli
                                   if (renderStatus === 'ready' && renderRecord?.id) {
                                     const downloadUrl = `${API_URL}/api/renders/${renderRecord.id}/download`;
                                     
-                                    console.log('Opening download:', downloadUrl);
                                     toast.success('Download starting...');
-                                    window.open(downloadUrl, '_blank');
-                                    
+                                    const win =window.open(downloadUrl, '_blank');
+                                    setTimeout(() => {
+                                        if (win) win.close();
+                                      }, 1000);
                                     setTimeout(() => {
                                       toast.success('Cleaning up...');
                                       fetch(`${API_URL}/api/renders/${renderRecord.id}`, { method: 'DELETE' })

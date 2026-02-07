@@ -6,6 +6,7 @@ import { getApiEndpoint } from "@/lib/api";
 import { Key, Loader2, CheckCircle2, AlertCircle, Shield } from "lucide-react";
 import { LicenseStatus, LicenseActivationResponse } from "@/types/license";
 
+
 export default function LicensePage() {
   const [licenseKey, setLicenseKey] = useState("");
   const [loading, setLoading] = useState(false);
@@ -283,16 +284,18 @@ export default function LicensePage() {
 
           {/* Help Text */}
           <div className="mt-6 pt-6 border-t border-white/5">
-            <p className="text-sm text-slate-500 text-center">
+           <p className="text-sm text-slate-500 text-center">
               Don't have a license?{" "}
-              <a
-                href="https://antariks.id"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-emerald-400 hover:text-emerald-300 font-medium"
+             <button
+                type="button"
+                onClick={() => {
+                    window.open("https://saas.antariks.id", "_blank");
+                }}
+                className="text-emerald-400 hover:text-emerald-300 font-medium underline"
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
               >
                 Purchase one here
-              </a>
+              </button>
             </p>
           </div>
         </div>

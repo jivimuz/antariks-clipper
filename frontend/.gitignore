@@ -23,11 +23,7 @@
 /dist
 
 # Build directory for icons (but allow README and .gitignore)
-/build/*.ico
-/build/*.icns
-/build/*.png
-!/build/README.md
-!/build/.gitignore
+
 
 # misc
 .DS_Store

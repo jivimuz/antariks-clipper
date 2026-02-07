@@ -93,13 +93,13 @@ function createWindow() {
     {
       label: 'View',
       submenu: [
-        {
-          label: 'Toggle DevTools',
-          accelerator: 'F12',
-          click: () => {
-            mainWindow.webContents.toggleDevTools();
-          }
-        },
+        // {
+        //   label: 'Toggle DevTools',
+        //   accelerator: 'F12',
+        //   click: () => {
+        //     mainWindow.webContents.toggleDevTools();
+        //   }
+        // },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -112,7 +112,7 @@ function createWindow() {
         {
           label: 'Documentation',
           click: async () => {
-            await shell.openExternal('https://github.com/your-repo/antariks-clipper#readme');
+            await shell.openExternal('https://saas.antariks.id');
           }
         },
         { type: 'separator' },
@@ -177,11 +177,11 @@ function createWindow() {
   });
 
   // Handle new window requests
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Block all new windows
-    console.log('Blocked new window to:', url);
-    return { action: 'deny' };
-  });
+  // mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  //   // Block all new windows
+  //   console.log('Blocked new window to:', url);
+  //   return { action: 'deny' };
+  // });
 
   // Cleanup on close
   mainWindow.on('closed', () => {
@@ -189,13 +189,15 @@ function createWindow() {
   });
 }
 
+
+
 /**
  * Create loading splash window
  */
 function createSplashWindow() {
   const splash = new BrowserWindow({
-    width: 400,
-    height: 300,
+    width: 600,
+    height: 400,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -419,6 +421,36 @@ const { ipcMain } = require('electron');
 
 ipcMain.handle('get-version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle("download-url", async (_event, { url }) => {
+  // window hidden khusus download
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: false },
+  });
+
+  const ses = win.webContents.session;
+
+  // pasang listener sekali untuk window ini
+  const onWillDownload = (event, item) => {
+    // optional: default save path
+    const filename = item.getFilename();
+    const savePath = path.join(app.getPath("downloads"), filename);
+    item.setSavePath(savePath);
+
+    item.once("done", () => {
+      // auto close setelah download selesai/cancel
+      try { win.close(); } catch {}
+      ses.removeListener("will-download", onWillDownload);
+    });
+  };
+
+  ses.on("will-download", onWillDownload);
+
+  win.webContents.downloadURL(url);
+
+  return { ok: true };
 });
 
 // Handle second instance (single instance lock)

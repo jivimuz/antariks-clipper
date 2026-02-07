@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.send(channel, data);
     }
   },
-  
+  download: (url) => ipcRenderer.invoke("download-url", { url }),
   // Example: receive messages from main process
   receive: (channel, func) => {
     const validChannels = ['fromMain'];

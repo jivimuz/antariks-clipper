@@ -9,7 +9,6 @@ export default function JobDetailPage() {
   
   useEffect(() => {
     const storedJobId = localStorage.getItem('selectedJobId');
-    console.log('[JobDetail] localStorage jobId:', storedJobId);
     
     if (storedJobId) {
       setJobId(storedJobId);

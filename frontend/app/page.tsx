@@ -97,7 +97,6 @@ export default function Home() {
         formData.append('file', file!);
       }
 
-      console.log(licenseStatus)
       // --- SaaS: Require license key ---
       const licenseKey = typeof window !== 'undefined' ? licenseStatus?.licenseKey : null;
       if (!licenseKey) {

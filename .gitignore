@@ -32,12 +32,7 @@ backend/.env
 # Electron build artifacts
 frontend/out/
 frontend/dist/
-frontend/build/*.ico
-frontend/build/*.icns
-frontend/build/*.png
-!frontend/build/.gitkeep
-!frontend/build/README.md
-!frontend/build/.gitignore
+
 
 # OS
 .DS_Store

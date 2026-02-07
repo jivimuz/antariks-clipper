@@ -1,5 +1,14 @@
 'use client';
 
+// Extend the Window interface to include electronAPI
+declare global {
+  interface Window {
+    electronAPI?: {
+      download: (url: string) => Promise<void>;
+    };
+  }
+}
+
 import { useDownloads } from '@/contexts/DownloadContext';
 import { Download, X, CheckCircle, Loader2, AlertCircle, Minimize2, Maximize2, Trash2, FileText, Share2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -17,7 +26,7 @@ interface RenderFile {
 export default function FloatingDownloadManager() {
   const { downloads, removeDownload, clearCompleted } = useDownloads();
   const [isMinimized, setIsMinimized] = useState(true);
-  const [isHidden, setIsHidden] = useState(false);
+  const [isHidden, setIsHidden] = useState(true); // default sembunyi
   const [confirmDialog, setConfirmDialog] = useState<{ renderId: string; clipTitle: string; action: 'cancel' | 'delete' } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'saved'>('current');
@@ -33,11 +42,13 @@ export default function FloatingDownloadManager() {
         const res = await fetch(`${API_URL}/api/renders`);
         if (res.ok) {
           const data = await res.json();
+          // Jika backend mengembalikan {renders: [...]}, ambil renders
+          const renders = Array.isArray(data) ? data : data.renders || [];
           // Filter only completed/ready renders
-          const files = data.filter((r: any) => (r.status === 'ready' || r.status === 'completed') && r.output_path)
+          const files = renders.filter((r: any) => (r.status === 'ready' || r.status === 'completed') && r.output_path)
             .map((r: any) => ({
               id: r.id,
-              clipTitle: r.job_detail?.clip_title || 'Unknown',
+              clipTitle: r.clipTitle || r.title || 'Unknown',
               filename: r.output_path?.split('/').pop() || 'unknown',
               created_at: r.created_at,
               filesize: r.filesize
@@ -50,9 +61,9 @@ export default function FloatingDownloadManager() {
         setLoadingSavedFiles(false);
       }
     };
-
     loadSavedFiles();
   }, [API_URL]);
+  
 
   const downloadArray = Array.from(downloads.values());
   const activeDownloads = downloadArray.filter(d => 
@@ -62,15 +73,25 @@ export default function FloatingDownloadManager() {
     d.status === 'completed' || d.status === 'failed'
   );
 
-  const handleDownload = (item: any) => {
-    if (item.downloadUrl) {
-      window.open(`${API_URL}${item.downloadUrl}`, '_blank');
-    }
-  };
+const handleDownload = async (item: any) => {
+  if (!item.downloadUrl) return;
 
-  const handleDownloadSavedFile = (file: RenderFile) => {
-    window.open(`${API_URL}/api/renders/${file.id}/download`, '_blank');
-  };
+  const url = `${API_URL}${item.downloadUrl}`;
+  if (window.electronAPI) {
+    await window.electronAPI.download(url);
+  } else {
+    toast.error('Fitur download hanya tersedia di aplikasi desktop.');
+  }
+};
+
+const handleDownloadSavedFile = async (file: RenderFile) => {
+  const url = `${API_URL}/api/renders/${file.id}/download`;
+  if (window.electronAPI) {
+    await window.electronAPI.download(url);
+  } else {
+    toast.error('Fitur download hanya tersedia di aplikasi desktop.');
+  }
+};
 
   const sanitizeFilename = (name: string) =>
     name.replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'clip';

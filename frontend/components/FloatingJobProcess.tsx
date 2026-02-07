@@ -7,7 +7,7 @@ import { useState } from 'react';
 export default function FloatingJobProcess() {
   const { jobs, removeJob } = useJobProcess();
   const [isMinimized, setIsMinimized] = useState(true);
-  const [isHidden, setIsHidden] = useState(false);
+  const [isHidden, setIsHidden] = useState(true); // default sembunyi
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const jobArray = Array.from(jobs.values());

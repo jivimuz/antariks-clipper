@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -62,6 +63,16 @@ export default function JobsPage() {
       }
     };
   }, [deleteConfirmId, deleteConfirmTimeout]);
+
+    // Polling: auto-refresh jobs if ada yang processing/queued
+  useEffect(() => {
+    const hasActiveJob = jobs.some(job => job.status === 'processing' || job.status === 'queued');
+    if (!hasActiveJob) return;
+    const interval = setInterval(() => {
+      fetchJobs(pagination.page);
+    }, 4000); // 4 detik
+    return () => clearInterval(interval);
+  }, [jobs, pagination.page]);
 
   const fetchJobs = async (page: number = 1) => {
     setLoading(true);

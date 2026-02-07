@@ -127,6 +127,7 @@ async def validate_license(license_key: str | None = None) -> dict:
             response = await client.post(LICENSE_URL, json=payload)
             response.raise_for_status()
             data = response.json()
+            logger.warning(f"Data: {data}")
             
             # Check response
             if data.get("valid") is True:
@@ -152,6 +153,8 @@ async def validate_license(license_key: str | None = None) -> dict:
                     "daysRemaining": days_remaining,
                     "expiringSoon": expiring_soon
                 }
+            elif data.get("error"):
+                return {"valid": False, "error": data.get("error")}
             else:
                 return {"valid": False, "error": "Invalid license key"}
                 
